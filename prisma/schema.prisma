@@ -1,0 +1,526 @@
+// ─── Generator & Datasource ──────────────────────────────────
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ─── Enums ───────────────────────────────────────────────────
+
+enum UserRole {
+  HOMEOWNER
+  TRADESPERSON
+  ADMIN
+}
+
+enum JobStatus {
+  DRAFT
+  ACTIVE
+  SHORTLISTING
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+  CLOSED
+}
+
+enum LeadStatus {
+  AVAILABLE
+  INTERESTED
+  SHORTLISTED
+  CONTACTED
+  HIRED
+  REJECTED
+  EXPIRED
+}
+
+enum QuoteStatus {
+  PENDING
+  ACCEPTED
+  DECLINED
+  WITHDRAWN
+}
+
+enum PaymentType {
+  CREDIT_PURCHASE
+  SUBSCRIPTION
+  REFUND
+}
+
+enum PaymentStatus {
+  PENDING
+  COMPLETED
+  FAILED
+  REFUNDED
+}
+
+enum NotificationType {
+  NEW_LEAD
+  NEW_INTEREST
+  NEW_QUOTE
+  NEW_MESSAGE
+  NEW_REVIEW
+  JOB_COMPLETED
+  JOB_CANCELLED
+  LEAD_EXPIRED
+  CREDIT_LOW
+  CREDIT_TOPUP
+  ACCOUNT_VERIFIED
+  NEW_ANSWER
+  ANSWER_LIKED
+}
+
+enum VerificationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+// ─── Users ───────────────────────────────────────────────────
+
+model User {
+  id            String    @id @default(cuid())
+  email         String    @unique
+  passwordHash  String
+  role          UserRole
+  name          String
+  phone         String?
+  avatarUrl     String?
+  emailVerified Boolean   @default(false)
+  passwordResetToken  String?   @unique
+  passwordResetExpiry DateTime?
+  emailVerifyToken    String?   @unique
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  tradespersonProfile TradespersonProfile?
+  jobsPosted          Job[]                @relation("HomeownerJobs")
+  leads               Lead[]               @relation("TradespersonLeads")
+  quotesSent          Quote[]              @relation("TradespersonQuotes")
+  reviewsWritten      Review[]             @relation("ReviewAuthor")
+  reviewsReceived     Review[]             @relation("ReviewSubject")
+  reviewReplies       ReviewReply[]
+  conversationsAsHomeowner Conversation[]  @relation("HomeownerConversations")
+  conversationsAsTradesperson Conversation[] @relation("TradespersonConversations")
+  messagesSent        Message[]
+  questionsAsked      Question[]
+  answersGiven        Answer[]
+  answerLikes         AnswerLike[]
+  notifications       Notification[]
+  leadCredit          LeadCredit?
+  payments            Payment[]
+
+  @@index([email])
+  @@index([role])
+  @@map("users")
+}
+
+// ─── Tradesperson Profiles ───────────────────────────────────
+
+model TradespersonProfile {
+  id                String   @id @default(cuid())
+  userId            String   @unique
+  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  // Public profile
+  username          String   @unique
+  companyName       String?
+  bio               String?  @db.Text
+  trade             String?
+
+  // Location & work area
+  postcode          String?
+  latitude          Float?
+  longitude         Float?
+  workRadiusMiles   Int      @default(25)
+
+  // Verification
+  idDocumentUrl     String?
+  verificationStatus VerificationStatus @default(PENDING)
+  verifiedAt        DateTime?
+
+  // Insurance
+  publicLiability       String?
+  employersLiability    String?
+  professionalIndemnity String?
+  insuranceVerified     Boolean  @default(false)
+  insuranceExpiresAt    DateTime?
+
+  // Settings
+  guarantee         Boolean  @default(false)
+  responseTime      String?
+
+  // Aggregates (denormalized for read performance)
+  avgRating         Float    @default(0)
+  reviewCount       Int      @default(0)
+  completedJobs     Int      @default(0)
+
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  // Relations
+  services          TradespersonService[]
+  qualifications    Qualification[]
+  portfolioItems    PortfolioItem[]
+  messageTemplates  MessageTemplate[]
+
+  @@index([username])
+  @@index([postcode])
+  @@index([latitude, longitude])
+  @@index([verificationStatus])
+  @@map("tradesperson_profiles")
+}
+
+model TradespersonService {
+  id                    String              @id @default(cuid())
+  tradespersonProfileId String
+  tradespersonProfile   TradespersonProfile @relation(fields: [tradespersonProfileId], references: [id], onDelete: Cascade)
+  serviceSlug           String
+  tradeSlug             String?
+
+  @@unique([tradespersonProfileId, serviceSlug, tradeSlug])
+  @@index([serviceSlug])
+  @@map("tradesperson_services")
+}
+
+model Qualification {
+  id                    String              @id @default(cuid())
+  tradespersonProfileId String
+  tradespersonProfile   TradespersonProfile @relation(fields: [tradespersonProfileId], references: [id], onDelete: Cascade)
+  name                  String
+  verified              Boolean             @default(false)
+  year                  Int?
+
+  @@map("qualifications")
+}
+
+model PortfolioItem {
+  id                    String              @id @default(cuid())
+  tradespersonProfileId String
+  tradespersonProfile   TradespersonProfile @relation(fields: [tradespersonProfileId], references: [id], onDelete: Cascade)
+  imageUrl              String
+  title                 String?
+  category              String?
+  sortOrder             Int                 @default(0)
+  createdAt             DateTime            @default(now())
+
+  @@map("portfolio_items")
+}
+
+model MessageTemplate {
+  id                    String              @id @default(cuid())
+  tradespersonProfileId String
+  tradespersonProfile   TradespersonProfile @relation(fields: [tradespersonProfileId], references: [id], onDelete: Cascade)
+  name                  String
+  body                  String              @db.Text
+  createdAt             DateTime            @default(now())
+
+  @@map("message_templates")
+}
+
+// ─── Jobs ────────────────────────────────────────────────────
+
+model Job {
+  id            String    @id @default(cuid())
+  homeownerId   String
+  homeowner     User      @relation("HomeownerJobs", fields: [homeownerId], references: [id], onDelete: Cascade)
+
+  title         String
+  description   String    @db.Text
+  serviceSlug   String
+  tradeSlug     String?
+
+  // Location
+  postcode      String
+  placeName     String?
+  latitude      Float?
+  longitude     Float?
+
+  // Dynamic question answers
+  answersJson   Json?
+
+  // Status
+  status        JobStatus @default(ACTIVE)
+
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Relations
+  attachments   JobAttachment[]
+  leads         Lead[]
+  quotes        Quote[]
+  conversations Conversation[]
+  reviews       Review[]
+
+  @@index([homeownerId])
+  @@index([status])
+  @@index([serviceSlug])
+  @@index([latitude, longitude])
+  @@index([createdAt])
+  @@map("jobs")
+}
+
+model JobAttachment {
+  id        String   @id @default(cuid())
+  jobId     String
+  job       Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  fileUrl   String
+  fileName  String
+  fileSize  Int
+  mimeType  String
+  createdAt DateTime @default(now())
+
+  @@map("job_attachments")
+}
+
+// ─── Leads ───────────────────────────────────────────────────
+
+model Lead {
+  id              String     @id @default(cuid())
+  jobId           String
+  job             Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  tradespersonId  String
+  tradesperson    User       @relation("TradespersonLeads", fields: [tradespersonId], references: [id], onDelete: Cascade)
+
+  status          LeadStatus @default(AVAILABLE)
+  creditCost      Int        @default(0)
+  distanceMiles   Float?
+
+  interestedAt    DateTime?
+  shortlistedAt   DateTime?
+  contactedAt     DateTime?
+  hiredAt         DateTime?
+  rejectedAt      DateTime?
+  expiresAt       DateTime?
+
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  @@unique([jobId, tradespersonId])
+  @@index([tradespersonId, status])
+  @@index([jobId, status])
+  @@index([expiresAt])
+  @@map("leads")
+}
+
+// ─── Quotes ──────────────────────────────────────────────────
+
+model Quote {
+  id              String      @id @default(cuid())
+  jobId           String
+  job             Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  tradespersonId  String
+  tradesperson    User        @relation("TradespersonQuotes", fields: [tradespersonId], references: [id], onDelete: Cascade)
+
+  message         String      @db.Text
+  amountPence     Int?
+  estimateRange   String?
+
+  status          QuoteStatus @default(PENDING)
+
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  @@unique([jobId, tradespersonId])
+  @@index([jobId])
+  @@index([tradespersonId])
+  @@map("quotes")
+}
+
+// ─── Conversations & Messages ────────────────────────────────
+
+model Conversation {
+  id              String   @id @default(cuid())
+  jobId           String
+  job             Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  homeownerId     String
+  homeowner       User     @relation("HomeownerConversations", fields: [homeownerId], references: [id], onDelete: Cascade)
+  tradespersonId  String
+  tradesperson    User     @relation("TradespersonConversations", fields: [tradespersonId], references: [id], onDelete: Cascade)
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  messages        Message[]
+
+  @@unique([jobId, homeownerId, tradespersonId])
+  @@index([homeownerId])
+  @@index([tradespersonId])
+  @@map("conversations")
+}
+
+model Message {
+  id              String   @id @default(cuid())
+  conversationId  String
+  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId        String
+  sender          User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  body            String   @db.Text
+  readAt          DateTime?
+  createdAt       DateTime @default(now())
+
+  @@index([conversationId, createdAt])
+  @@map("messages")
+}
+
+// ─── Reviews ─────────────────────────────────────────────────
+
+model Review {
+  id              String   @id @default(cuid())
+  jobId           String
+  job             Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  authorId        String
+  author          User     @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  subjectId       String
+  subject         User     @relation("ReviewSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+
+  rating          Int
+  comment         String   @db.Text
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  reply           ReviewReply?
+
+  @@unique([jobId, authorId])
+  @@index([subjectId])
+  @@index([rating])
+  @@map("reviews")
+}
+
+model ReviewReply {
+  id        String   @id @default(cuid())
+  reviewId  String   @unique
+  review    Review   @relation(fields: [reviewId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body      String   @db.Text
+  createdAt DateTime @default(now())
+
+  @@map("review_replies")
+}
+
+// ─── Questions & Answers ─────────────────────────────────────
+
+model Question {
+  id            String   @id @default(cuid())
+  authorId      String
+  author        User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  serviceSlug   String?
+  title         String
+  body          String   @db.Text
+  answerCount   Int      @default(0)
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  answers       Answer[]
+
+  @@index([serviceSlug])
+  @@index([createdAt])
+  @@map("questions")
+}
+
+model Answer {
+  id          String   @id @default(cuid())
+  questionId  String
+  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  authorId    String
+  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body        String   @db.Text
+  isBest      Boolean  @default(false)
+  likesCount  Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  likes       AnswerLike[]
+
+  @@index([questionId])
+  @@map("answers")
+}
+
+model AnswerLike {
+  id        String @id @default(cuid())
+  answerId  String
+  answer    Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([answerId, userId])
+  @@map("answer_likes")
+}
+
+// ─── Notifications ───────────────────────────────────────────
+
+model Notification {
+  id        String           @id @default(cuid())
+  userId    String
+  user      User             @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      NotificationType
+  title     String
+  body      String?
+  linkUrl   String?
+  read      Boolean          @default(false)
+  createdAt DateTime         @default(now())
+
+  @@index([userId, read])
+  @@index([createdAt])
+  @@map("notifications")
+}
+
+// ─── Lead Credits & Payments ─────────────────────────────────
+
+model LeadCredit {
+  id              String   @id @default(cuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  balance         Int      @default(0)
+  autoTopup       Boolean  @default(false)
+  topupAmount     Int?
+  topupThreshold  Int?
+  lastTopupAt     DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  @@map("lead_credits")
+}
+
+model Payment {
+  id            String        @id @default(cuid())
+  userId        String
+  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type          PaymentType
+  amountPence   Int
+  credits       Int?
+  status        PaymentStatus @default(PENDING)
+  stripeSessionId String?    @unique
+  stripePaymentIntentId String?
+  description   String?
+  createdAt     DateTime      @default(now())
+
+  @@index([userId])
+  @@index([stripeSessionId])
+  @@map("payments")
+}
+
+// ─── Lookup: Services ────────────────────────────────────────
+
+model Service {
+  slug      String  @id
+  name      String
+  imageUrl  String?
+
+  trades    Trade[]
+
+  @@map("services")
+}
+
+model Trade {
+  slug        String  @id
+  name        String
+  serviceSlug String
+  service     Service @relation(fields: [serviceSlug], references: [slug], onDelete: Cascade)
+
+  @@index([serviceSlug])
+  @@map("trades")
+}
