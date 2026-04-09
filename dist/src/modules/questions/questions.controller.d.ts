@@ -9,7 +9,7 @@ export declare class QuestionsController {
     createQuestion(user: JwtPayload, dto: CreateQuestionDto): Promise<{
         id: string;
     }>;
-    getQuestions(query: GetQuestionsQueryDto): Promise<{
+    getQuestions(query: GetQuestionsQueryDto, user?: JwtPayload): Promise<{
         data: {
             id: string;
             title: string;

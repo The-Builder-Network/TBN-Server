@@ -14,6 +14,7 @@ const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
 class GetQuestionsQueryDto {
     serviceSlug;
+    authorId;
     sort = 'createdAt';
     order = 'desc';
     page = 1;
@@ -25,6 +26,11 @@ __decorate([
     (0, class_validator_1.IsString)(),
     __metadata("design:type", String)
 ], GetQuestionsQueryDto.prototype, "serviceSlug", void 0);
+__decorate([
+    (0, class_validator_1.IsOptional)(),
+    (0, class_validator_1.IsString)(),
+    __metadata("design:type", String)
+], GetQuestionsQueryDto.prototype, "authorId", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsIn)(['createdAt', 'answerCount']),
