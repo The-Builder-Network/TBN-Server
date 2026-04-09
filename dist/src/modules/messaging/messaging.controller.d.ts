@@ -8,13 +8,13 @@ export declare class MessagingController {
         conversations: {
             id: string;
             job: {
+                serviceSlug: string;
                 id: string;
                 title: string;
-                serviceSlug: string;
             };
             otherParty: {
-                id: string;
                 name: string;
+                id: string;
                 avatarUrl: string | null;
             };
             unreadCount: number;

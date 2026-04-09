@@ -12,14 +12,14 @@ export declare class NotificationsService {
     private readonly prisma;
     constructor(prisma: PrismaService);
     createNotification(data: CreateNotificationData): Promise<{
-        id: string;
         type: import("@prisma/client").$Enums.NotificationType;
-        title: string;
+        id: string;
+        createdAt: Date;
         body: string | null;
+        userId: string;
+        title: string;
         linkUrl: string | null;
         read: boolean;
-        createdAt: Date;
-        userId: string;
     }>;
     getNotifications(userId: string, query: GetNotificationsQueryDto): Promise<{
         data: {

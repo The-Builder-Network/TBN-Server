@@ -13,10 +13,13 @@ exports.LeadsService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_js_1 = require("../../prisma/prisma.service.js");
 const client_1 = require("@prisma/client");
+const payments_service_js_1 = require("../payments/payments.service.js");
 let LeadsService = class LeadsService {
     prisma;
-    constructor(prisma) {
+    paymentsService;
+    constructor(prisma, paymentsService) {
         this.prisma = prisma;
+        this.paymentsService = paymentsService;
     }
     async countAvailableLeadsNear(_postcode, _radiusMiles) {
         const count = await this.prisma.job.count({
@@ -186,6 +189,8 @@ let LeadsService = class LeadsService {
                 conversationId: conversation.id,
             };
         });
+        this.paymentsService.triggerAutoTopupIfNeeded(tradespersonId).catch(() => {
+        });
         return result;
     }
     async getBalance(userId) {
@@ -204,6 +209,7 @@ let LeadsService = class LeadsService {
 exports.LeadsService = LeadsService;
 exports.LeadsService = LeadsService = __decorate([
     (0, common_1.Injectable)(),
-    __metadata("design:paramtypes", [prisma_service_js_1.PrismaService])
+    __metadata("design:paramtypes", [prisma_service_js_1.PrismaService,
+        payments_service_js_1.PaymentsService])
 ], LeadsService);
 //# sourceMappingURL=leads.service.js.map
