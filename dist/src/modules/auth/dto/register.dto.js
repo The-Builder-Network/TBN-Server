@@ -42,6 +42,9 @@ __decorate([
 __decorate([
     (0, class_validator_1.IsOptional)(),
     (0, class_validator_1.IsString)(),
+    (0, class_validator_1.Matches)(/^\+44[1-9]\d{9}$/, {
+        message: 'Phone must be a valid UK number (e.g. +447911123456)',
+    }),
     __metadata("design:type", String)
 ], RegisterDto.prototype, "phone", void 0);
 //# sourceMappingURL=register.dto.js.map
