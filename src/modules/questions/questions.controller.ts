@@ -46,7 +46,14 @@ export class QuestionsController {
   async getQuestions(
     @Query(new ValidationPipe({ transform: true, whitelist: true }))
     query: GetQuestionsQueryDto,
+    @CurrentUser() user?: JwtPayload,
   ) {
+    // Support ?mine=true to filter by current user's questions
+    if (query.authorId === 'mine' && user) {
+      query.authorId = user.sub;
+    } else if (query.authorId === 'mine') {
+      query.authorId = undefined;
+    }
     return this.questionsService.getQuestions(query);
   }
 
@@ -54,10 +61,7 @@ export class QuestionsController {
 
   @Get('questions/:id')
   @UseGuards(OptionalJwtAuthGuard)
-  async getQuestion(
-    @Param('id') id: string,
-    @CurrentUser() user?: JwtPayload,
-  ) {
+  async getQuestion(@Param('id') id: string, @CurrentUser() user?: JwtPayload) {
     return this.questionsService.getQuestion(id, user?.sub);
   }
 

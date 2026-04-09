@@ -31,13 +31,16 @@ export class QuestionsService {
   async getQuestions(query: GetQuestionsQueryDto) {
     const {
       serviceSlug,
+      authorId,
       sort = 'createdAt',
       order = 'desc',
       page = 1,
       perPage = 20,
     } = query;
 
-    const where = serviceSlug ? { serviceSlug } : {};
+    const where: Record<string, unknown> = {};
+    if (serviceSlug) where.serviceSlug = serviceSlug;
+    if (authorId) where.authorId = authorId;
 
     const [total, questions] = await Promise.all([
       this.prisma.question.count({ where }),
@@ -85,7 +88,11 @@ export class QuestionsService {
       include: {
         author: { select: { name: true, avatarUrl: true } },
         answers: {
-          orderBy: [{ isBest: 'desc' }, { likesCount: 'desc' }, { createdAt: 'asc' }],
+          orderBy: [
+            { isBest: 'desc' },
+            { likesCount: 'desc' },
+            { createdAt: 'asc' },
+          ],
           include: {
             author: {
               select: {
@@ -97,7 +104,9 @@ export class QuestionsService {
               },
             },
             likes: {
-              where: currentUserId ? { userId: currentUserId } : { userId: '__none__' },
+              where: currentUserId
+                ? { userId: currentUserId }
+                : { userId: '__none__' },
               select: { id: true },
             },
           },
@@ -216,7 +225,9 @@ export class QuestionsService {
     });
     if (!answer) throw new NotFoundException('Answer not found');
     if (answer.question.authorId !== userId) {
-      throw new ForbiddenException('Only the question author can mark the best answer');
+      throw new ForbiddenException(
+        'Only the question author can mark the best answer',
+      );
     }
 
     await this.prisma.$transaction([

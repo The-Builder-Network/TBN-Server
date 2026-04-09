@@ -7,6 +7,10 @@ export class GetQuestionsQueryDto {
   serviceSlug?: string;
 
   @IsOptional()
+  @IsString()
+  authorId?: string;
+
+  @IsOptional()
   @IsIn(['createdAt', 'answerCount'])
   sort?: 'createdAt' | 'answerCount' = 'createdAt';
 
