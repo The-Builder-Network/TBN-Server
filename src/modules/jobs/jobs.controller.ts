@@ -26,7 +26,7 @@ import { GetJobsQueryDto } from './dto/get-jobs-query.dto.js';
 import { UpdateJobStatusDto } from './dto/update-job-status.dto.js';
 import { ValidationPipe } from '@nestjs/common';
 
-@Controller('jobs')
+@Controller('api/v1/jobs')
 @UseGuards(JwtAuthGuard, RolesGuard)
 export class JobsController {
   constructor(private readonly jobsService: JobsService) {}
@@ -66,10 +66,7 @@ export class JobsController {
   }
 
   @Get(':id')
-  async getJob(
-    @CurrentUser() user: JwtPayload,
-    @Param('id') id: string,
-  ) {
+  async getJob(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     return this.jobsService.getJob(id, user.sub, user.role);
   }
 
