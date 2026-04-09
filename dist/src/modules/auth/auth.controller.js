@@ -14,6 +14,7 @@ var __param = (this && this.__param) || function (paramIndex, decorator) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthController = void 0;
 const common_1 = require("@nestjs/common");
+const throttler_1 = require("@nestjs/throttler");
 const auth_service_js_1 = require("./auth.service.js");
 const jwt_auth_guard_js_1 = require("./guards/jwt-auth.guard.js");
 const register_dto_js_1 = require("./dto/register.dto.js");
@@ -119,6 +120,7 @@ __decorate([
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "checkEmail", null);
 exports.AuthController = AuthController = __decorate([
+    (0, throttler_1.Throttle)({ default: { limit: 5, ttl: 60_000 } }),
     (0, common_1.Controller)('api/v1/auth'),
     __metadata("design:paramtypes", [auth_service_js_1.AuthService])
 ], AuthController);

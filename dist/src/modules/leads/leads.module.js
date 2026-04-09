@@ -11,12 +11,13 @@ const common_1 = require("@nestjs/common");
 const leads_controller_js_1 = require("./leads.controller.js");
 const leads_service_js_1 = require("./leads.service.js");
 const prisma_module_js_1 = require("../../prisma/prisma.module.js");
+const payments_module_js_1 = require("../payments/payments.module.js");
 let LeadsModule = class LeadsModule {
 };
 exports.LeadsModule = LeadsModule;
 exports.LeadsModule = LeadsModule = __decorate([
     (0, common_1.Module)({
-        imports: [prisma_module_js_1.PrismaModule],
+        imports: [prisma_module_js_1.PrismaModule, payments_module_js_1.PaymentsModule],
         controllers: [leads_controller_js_1.LeadsController],
         providers: [leads_service_js_1.LeadsService],
         exports: [leads_service_js_1.LeadsService],

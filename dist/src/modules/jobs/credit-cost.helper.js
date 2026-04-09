@@ -6,7 +6,7 @@ const SERVICE_CREDIT_MAP = {
     'cleaning-services': 3,
     'garden-landscaping': 5,
     'pest-control': 4,
-    'locksmith': 4,
+    locksmith: 4,
     plumbing: 10,
     electrical: 10,
     tiling: 8,
@@ -33,7 +33,7 @@ const SERVICE_CREDIT_MAP = {
     'basement-conversion': 22,
     architectural: 25,
     'structural-engineer': 28,
-    'surveying': 22,
+    surveying: 22,
     'interior-design': 20,
 };
 function calculateCreditCost(serviceSlug, _answersJson) {
