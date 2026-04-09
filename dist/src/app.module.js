@@ -41,7 +41,11 @@ var __importStar = (this && this.__importStar) || (function () {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AppModule = void 0;
 const common_1 = require("@nestjs/common");
+const core_1 = require("@nestjs/core");
 const config_1 = require("@nestjs/config");
+const throttler_1 = require("@nestjs/throttler");
+const schedule_1 = require("@nestjs/schedule");
+const nestjs_pino_1 = require("nestjs-pino");
 const Joi = __importStar(require("joi"));
 const prisma_module_js_1 = require("./prisma/prisma.module.js");
 const health_controller_js_1 = require("./health/health.controller.js");
@@ -58,6 +62,7 @@ const notifications_module_js_1 = require("./modules/notifications/notifications
 const uploads_module_js_1 = require("./modules/uploads/uploads.module.js");
 const search_module_js_1 = require("./modules/search/search.module.js");
 const admin_module_js_1 = require("./modules/admin/admin.module.js");
+const maintenance_module_js_1 = require("./modules/maintenance/maintenance.module.js");
 let AppModule = class AppModule {
 };
 exports.AppModule = AppModule;
@@ -78,8 +83,30 @@ exports.AppModule = AppModule = __decorate([
                     R2_BUCKET_NAME: Joi.string().allow('').optional(),
                     R2_PUBLIC_URL: Joi.string().allow('').optional(),
                     R2_ENDPOINT: Joi.string().allow('').optional(),
+                    STRIPE_SECRET_KEY: Joi.string().allow('').optional(),
+                    STRIPE_WEBHOOK_SECRET: Joi.string().allow('').optional(),
                 }),
             }),
+            throttler_1.ThrottlerModule.forRoot([
+                {
+                    name: 'default',
+                    ttl: 60_000,
+                    limit: 60,
+                },
+            ]),
+            nestjs_pino_1.LoggerModule.forRoot({
+                pinoHttp: {
+                    transport: process.env.NODE_ENV !== 'production'
+                        ? {
+                            target: 'pino-pretty',
+                            options: { colorize: true, singleLine: true },
+                        }
+                        : undefined,
+                    level: process.env.NODE_ENV !== 'production' ? 'debug' : 'info',
+                    redact: ['req.headers.authorization'],
+                },
+            }),
+            schedule_1.ScheduleModule.forRoot(),
             prisma_module_js_1.PrismaModule,
             auth_module_js_1.AuthModule,
             users_module_js_1.UsersModule,
@@ -94,8 +121,15 @@ exports.AppModule = AppModule = __decorate([
             uploads_module_js_1.UploadsModule,
             search_module_js_1.SearchModule,
             admin_module_js_1.AdminModule,
+            maintenance_module_js_1.MaintenanceModule,
         ],
         controllers: [health_controller_js_1.HealthController],
+        providers: [
+            {
+                provide: core_1.APP_GUARD,
+                useClass: throttler_1.ThrottlerGuard,
+            },
+        ],
     })
 ], AppModule);
 //# sourceMappingURL=app.module.js.map
