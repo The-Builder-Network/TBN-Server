@@ -3,7 +3,6 @@ import {
   UnauthorizedException,
   BadRequestException,
   ConflictException,
-  NotFoundException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -13,6 +12,7 @@ import { Resend } from 'resend';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { RegisterDto } from './dto/register.dto.js';
 import type { LoginDto } from './dto/login.dto.js';
+import { $Enums } from '@prisma/client';
 
 export interface JwtPayload {
   sub: string;
@@ -89,13 +89,19 @@ export class AuthService {
         passwordHash,
         name: dto.name,
         phone: dto.phone,
-        role: dto.role as any,
+        role: dto.role as $Enums.UserRole,
         emailVerifyToken,
         ...(dto.role === 'TRADESPERSON'
           ? {
               tradespersonProfile: {
                 create: {
-                  username: dto.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') + '-' + randomBytes(3).toString('hex'),
+                  username:
+                    dto.email
+                      .split('@')[0]
+                      .toLowerCase()
+                      .replace(/[^a-z0-9]/g, '') +
+                    '-' +
+                    randomBytes(3).toString('hex'),
                 },
               },
               leadCredit: {
@@ -229,6 +235,13 @@ export class AuthService {
     });
 
     return { message: 'Email verified.' };
+  }
+
+  // ── Check Email ──────────────────────────────────────────────
+
+  async checkEmail(email: string): Promise<{ exists: boolean }> {
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    return { exists: !!user };
   }
 
   // ── Email helpers ────────────────────────────────────────────

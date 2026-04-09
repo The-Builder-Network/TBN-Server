@@ -41,7 +41,7 @@ export class AuthController {
   }
 
   @Get('me')
-  @UseGuards(JwtAuthGuard)
+  @UseGuards(JwtAuthGuard) // eslint-disable-line @typescript-eslint/no-unsafe-argument
   async me(@CurrentUser() user: JwtPayload) {
     return this.authService.getMe(user.sub);
   }
@@ -62,5 +62,11 @@ export class AuthController {
   @HttpCode(HttpStatus.OK)
   async verifyEmail(@Body() dto: VerifyEmailDto) {
     return this.authService.verifyEmail(dto.token);
+  }
+
+  @Post('check-email')
+  @HttpCode(HttpStatus.OK)
+  checkEmail(@Body() body: { email: string }) {
+    return this.authService.checkEmail(body.email);
   }
 }
