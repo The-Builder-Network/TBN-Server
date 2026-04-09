@@ -67,6 +67,9 @@ export declare class AuthService {
     verifyEmail(token: string): Promise<{
         message: string;
     }>;
+    checkEmail(email: string): Promise<{
+        exists: boolean;
+    }>;
     private sendVerificationEmail;
     private sendPasswordResetEmail;
 }

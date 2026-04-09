@@ -50,6 +50,9 @@ let AuthController = class AuthController {
     async verifyEmail(dto) {
         return this.authService.verifyEmail(dto.token);
     }
+    checkEmail(body) {
+        return this.authService.checkEmail(body.email);
+    }
 };
 exports.AuthController = AuthController;
 __decorate([
@@ -107,6 +110,14 @@ __decorate([
     __metadata("design:paramtypes", [verify_email_dto_js_1.VerifyEmailDto]),
     __metadata("design:returntype", Promise)
 ], AuthController.prototype, "verifyEmail", null);
+__decorate([
+    (0, common_1.Post)('check-email'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "checkEmail", null);
 exports.AuthController = AuthController = __decorate([
     (0, common_1.Controller)('api/v1/auth'),
     __metadata("design:paramtypes", [auth_service_js_1.AuthService])
