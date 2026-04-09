@@ -8,14 +8,14 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UploadsModule = void 0;
 const common_1 = require("@nestjs/common");
+const uploads_service_js_1 = require("./uploads.service.js");
 let UploadsModule = class UploadsModule {
 };
 exports.UploadsModule = UploadsModule;
 exports.UploadsModule = UploadsModule = __decorate([
     (0, common_1.Module)({
-        controllers: [],
-        providers: [],
-        exports: [],
+        providers: [uploads_service_js_1.UploadsService],
+        exports: [uploads_service_js_1.UploadsService],
     })
 ], UploadsModule);
 //# sourceMappingURL=uploads.module.js.map
