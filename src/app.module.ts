@@ -1,5 +1,9 @@
 import { Module } from '@nestjs/common';
+import { APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
+import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
+import { LoggerModule } from 'nestjs-pino';
 import * as Joi from 'joi';
 import { PrismaModule } from './prisma/prisma.module.js';
 import { HealthController } from './health/health.controller.js';
@@ -16,6 +20,7 @@ import { NotificationsModule } from './modules/notifications/notifications.modul
 import { UploadsModule } from './modules/uploads/uploads.module.js';
 import { SearchModule } from './modules/search/search.module.js';
 import { AdminModule } from './modules/admin/admin.module.js';
+import { MaintenanceModule } from './modules/maintenance/maintenance.module.js';
 
 @Module({
   imports: [
@@ -33,8 +38,33 @@ import { AdminModule } from './modules/admin/admin.module.js';
         R2_BUCKET_NAME: Joi.string().allow('').optional(),
         R2_PUBLIC_URL: Joi.string().allow('').optional(),
         R2_ENDPOINT: Joi.string().allow('').optional(),
+        STRIPE_SECRET_KEY: Joi.string().allow('').optional(),
+        STRIPE_WEBHOOK_SECRET: Joi.string().allow('').optional(),
       }),
     }),
+    // Global rate limiting: 60 req/min by default (auth endpoints override to 5/min)
+    ThrottlerModule.forRoot([
+      {
+        name: 'default',
+        ttl: 60_000,
+        limit: 60,
+      },
+    ]),
+    // Structured JSON request logging via pino
+    LoggerModule.forRoot({
+      pinoHttp: {
+        transport:
+          process.env.NODE_ENV !== 'production'
+            ? {
+                target: 'pino-pretty',
+                options: { colorize: true, singleLine: true },
+              }
+            : undefined,
+        level: process.env.NODE_ENV !== 'production' ? 'debug' : 'info',
+        redact: ['req.headers.authorization'],
+      },
+    }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     AuthModule,
     UsersModule,
@@ -49,7 +79,15 @@ import { AdminModule } from './modules/admin/admin.module.js';
     UploadsModule,
     SearchModule,
     AdminModule,
+    MaintenanceModule,
   ],
   controllers: [HealthController],
+  providers: [
+    // Apply ThrottlerGuard globally; individual controllers/routes override via @Throttle()
+    {
+      provide: APP_GUARD,
+      useClass: ThrottlerGuard,
+    },
+  ],
 })
 export class AppModule {}
