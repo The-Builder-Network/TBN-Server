@@ -14,11 +14,11 @@ export declare class PaymentsController {
         data: {
             id: string;
             createdAt: Date;
-            type: import("@prisma/client").$Enums.PaymentType;
-            amountPence: number;
-            credits: number | null;
-            status: import("@prisma/client").$Enums.PaymentStatus;
             description: string | null;
+            status: import("@prisma/client").$Enums.PaymentStatus;
+            amountPence: number;
+            type: import("@prisma/client").$Enums.PaymentType;
+            credits: number | null;
         }[];
         meta: {
             total: number;
