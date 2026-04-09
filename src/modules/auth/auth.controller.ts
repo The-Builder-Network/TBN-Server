@@ -7,6 +7,7 @@ import {
   Post,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { AuthService } from './auth.service.js';
 import { JwtAuthGuard } from './guards/jwt-auth.guard.js';
 import { RegisterDto } from './dto/register.dto.js';
@@ -18,6 +19,8 @@ import { VerifyEmailDto } from './dto/verify-email.dto.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import type { JwtPayload } from './auth.service.js';
 
+// Auth endpoints are rate-limited much stricter: 5 requests per minute
+@Throttle({ default: { limit: 5, ttl: 60_000 } })
 @Controller('api/v1/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}

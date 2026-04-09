@@ -144,14 +144,14 @@ export declare class UsersController {
         }[];
     }>;
     updateUser(user: JwtPayload, dto: UpdateUserDto): Promise<{
-        id: string;
-        createdAt: Date;
+        name: string;
         email: string;
         role: import("@prisma/client").$Enums.UserRole;
-        name: string;
         phone: string | null;
+        id: string;
         avatarUrl: string | null;
         emailVerified: boolean;
+        createdAt: Date;
     }>;
     uploadAvatar(user: JwtPayload, file: Express.Multer.File): Promise<{
         avatarUrl: string;
