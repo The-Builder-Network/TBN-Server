@@ -11,20 +11,20 @@ export declare class LeadsController {
     getLeads(user: JwtPayload, query: GetLeadsQueryDto): Promise<{
         data: {
             id: string;
+            createdAt: Date;
+            job: {
+                id: string;
+                postcode: string;
+                createdAt: Date;
+                serviceSlug: string;
+                tradeSlug: string | null;
+                title: string;
+                placeName: string | null;
+            };
             status: import("@prisma/client").$Enums.LeadStatus;
             creditCost: number;
             distanceMiles: number | null;
             expiresAt: Date | null;
-            createdAt: Date;
-            job: {
-                id: string;
-                createdAt: Date;
-                title: string;
-                serviceSlug: string;
-                tradeSlug: string | null;
-                postcode: string;
-                placeName: string | null;
-            };
         }[];
         meta: {
             total: number;
@@ -37,8 +37,8 @@ export declare class LeadsController {
         job: {
             attachments: {
                 id: string;
-                jobId: string;
                 createdAt: Date;
+                jobId: string;
                 fileUrl: string;
                 fileName: string;
                 fileSize: number;
@@ -46,35 +46,35 @@ export declare class LeadsController {
             }[];
         } & {
             id: string;
-            status: import("@prisma/client").$Enums.JobStatus;
-            createdAt: Date;
-            updatedAt: Date;
-            homeownerId: string;
-            title: string;
-            description: string;
-            serviceSlug: string;
-            tradeSlug: string | null;
             postcode: string;
-            placeName: string | null;
             latitude: number | null;
             longitude: number | null;
+            createdAt: Date;
+            updatedAt: Date;
+            serviceSlug: string;
+            tradeSlug: string | null;
+            title: string;
+            description: string;
+            placeName: string | null;
             answersJson: import("@prisma/client/runtime/client").JsonValue | null;
+            status: import("@prisma/client").$Enums.JobStatus;
+            homeownerId: string;
         };
     } & {
         id: string;
+        createdAt: Date;
+        updatedAt: Date;
         jobId: string;
-        tradespersonId: string;
         status: import("@prisma/client").$Enums.LeadStatus;
+        interestedAt: Date | null;
+        tradespersonId: string;
         creditCost: number;
         distanceMiles: number | null;
-        interestedAt: Date | null;
         shortlistedAt: Date | null;
         contactedAt: Date | null;
         hiredAt: Date | null;
         rejectedAt: Date | null;
         expiresAt: Date | null;
-        createdAt: Date;
-        updatedAt: Date;
     }>;
     expressInterest(user: JwtPayload, id: string, dto: ExpressInterestDto): Promise<{
         leadStatus: "INTERESTED";
