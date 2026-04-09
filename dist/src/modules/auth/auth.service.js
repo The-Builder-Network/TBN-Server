@@ -101,7 +101,12 @@ let AuthService = class AuthService {
                     ? {
                         tradespersonProfile: {
                             create: {
-                                username: dto.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '') + '-' + (0, crypto_1.randomBytes)(3).toString('hex'),
+                                username: dto.email
+                                    .split('@')[0]
+                                    .toLowerCase()
+                                    .replace(/[^a-z0-9]/g, '') +
+                                    '-' +
+                                    (0, crypto_1.randomBytes)(3).toString('hex'),
                             },
                         },
                         leadCredit: {
@@ -202,6 +207,10 @@ let AuthService = class AuthService {
             data: { emailVerified: true, emailVerifyToken: null },
         });
         return { message: 'Email verified.' };
+    }
+    async checkEmail(email) {
+        const user = await this.prisma.user.findUnique({ where: { email } });
+        return { exists: !!user };
     }
     async sendVerificationEmail(email, token) {
         if (!this.resend)
