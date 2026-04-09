@@ -11,10 +11,14 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import type { GetLeadsQueryDto } from './dto/get-leads-query.dto.js';
 import type { ExpressInterestDto } from './dto/express-interest.dto.js';
 import { LeadStatus } from '@prisma/client';
+import { PaymentsService } from '../payments/payments.service.js';
 
 @Injectable()
 export class LeadsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly paymentsService: PaymentsService,
+  ) {}
 
   // ── Count public (trust signal) ───────────────────────────────────────────
 
@@ -243,6 +247,11 @@ export class LeadsService {
         quoteId: quote.id,
         conversationId: conversation.id,
       };
+    });
+
+    // Trigger auto-topup asynchronously if balance dropped below threshold
+    this.paymentsService.triggerAutoTopupIfNeeded(tradespersonId).catch(() => {
+      // Non-critical — log but don't fail the request
     });
 
     return result;

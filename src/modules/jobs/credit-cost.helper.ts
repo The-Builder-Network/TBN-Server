@@ -8,7 +8,7 @@ const SERVICE_CREDIT_MAP: Record<string, number> = {
   'cleaning-services': 3,
   'garden-landscaping': 5,
   'pest-control': 4,
-  'locksmith': 4,
+  locksmith: 4,
 
   // Standard trades (8-12)
   plumbing: 10,
@@ -41,7 +41,7 @@ const SERVICE_CREDIT_MAP: Record<string, number> = {
   // Specialist (20-30)
   architectural: 25,
   'structural-engineer': 28,
-  'surveying': 22,
+  surveying: 22,
   'interior-design': 20,
 };
 
