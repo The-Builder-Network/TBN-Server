@@ -8,14 +8,18 @@ var __decorate = (this && this.__decorate) || function (decorators, target, key,
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.LeadsModule = void 0;
 const common_1 = require("@nestjs/common");
+const leads_controller_js_1 = require("./leads.controller.js");
+const leads_service_js_1 = require("./leads.service.js");
+const prisma_module_js_1 = require("../../prisma/prisma.module.js");
 let LeadsModule = class LeadsModule {
 };
 exports.LeadsModule = LeadsModule;
 exports.LeadsModule = LeadsModule = __decorate([
     (0, common_1.Module)({
-        controllers: [],
-        providers: [],
-        exports: [],
+        imports: [prisma_module_js_1.PrismaModule],
+        controllers: [leads_controller_js_1.LeadsController],
+        providers: [leads_service_js_1.LeadsService],
+        exports: [leads_service_js_1.LeadsService],
     })
 ], LeadsModule);
 //# sourceMappingURL=leads.module.js.map
