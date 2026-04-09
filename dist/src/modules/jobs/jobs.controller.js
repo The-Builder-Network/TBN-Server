@@ -91,7 +91,7 @@ __decorate([
     __metadata("design:returntype", Promise)
 ], JobsController.prototype, "updateJobStatus", null);
 exports.JobsController = JobsController = __decorate([
-    (0, common_1.Controller)('jobs'),
+    (0, common_1.Controller)('api/v1/jobs'),
     (0, common_1.UseGuards)(jwt_auth_guard_js_1.JwtAuthGuard, roles_guard_js_1.RolesGuard),
     __metadata("design:paramtypes", [jobs_service_js_1.JobsService])
 ], JobsController);
