@@ -60,4 +60,9 @@ export declare class AuthController {
     verifyEmail(dto: VerifyEmailDto): Promise<{
         message: string;
     }>;
+    checkEmail(body: {
+        email: string;
+    }): Promise<{
+        exists: boolean;
+    }>;
 }
