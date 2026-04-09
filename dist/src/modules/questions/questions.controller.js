@@ -31,7 +31,13 @@ let QuestionsController = class QuestionsController {
     async createQuestion(user, dto) {
         return this.questionsService.createQuestion(user.sub, dto);
     }
-    async getQuestions(query) {
+    async getQuestions(query, user) {
+        if (query.authorId === 'mine' && user) {
+            query.authorId = user.sub;
+        }
+        else if (query.authorId === 'mine') {
+            query.authorId = undefined;
+        }
         return this.questionsService.getQuestions(query);
     }
     async getQuestion(id, user) {
@@ -62,8 +68,9 @@ __decorate([
     (0, common_1.Get)('questions'),
     (0, common_1.UseGuards)(optional_jwt_auth_guard_js_1.OptionalJwtAuthGuard),
     __param(0, (0, common_1.Query)(new common_1.ValidationPipe({ transform: true, whitelist: true }))),
+    __param(1, (0, current_user_decorator_js_1.CurrentUser)()),
     __metadata("design:type", Function),
-    __metadata("design:paramtypes", [get_questions_query_dto_js_1.GetQuestionsQueryDto]),
+    __metadata("design:paramtypes", [get_questions_query_dto_js_1.GetQuestionsQueryDto, Object]),
     __metadata("design:returntype", Promise)
 ], QuestionsController.prototype, "getQuestions", null);
 __decorate([
