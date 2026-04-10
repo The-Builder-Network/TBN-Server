@@ -26,8 +26,8 @@ export declare class PaymentsController {
             type: import("@prisma/client").$Enums.PaymentType;
             id: string;
             createdAt: Date;
-            status: import("@prisma/client").$Enums.PaymentStatus;
             description: string | null;
+            status: import("@prisma/client").$Enums.PaymentStatus;
             amountPence: number;
             credits: number | null;
         }[];

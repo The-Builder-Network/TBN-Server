@@ -15,8 +15,8 @@ export declare class NotificationsService {
         type: import("@prisma/client").$Enums.NotificationType;
         id: string;
         createdAt: Date;
-        userId: string;
         body: string | null;
+        userId: string;
         title: string;
         linkUrl: string | null;
         read: boolean;

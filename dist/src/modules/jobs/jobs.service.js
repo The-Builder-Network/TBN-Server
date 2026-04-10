@@ -143,7 +143,13 @@ let JobsService = class JobsService {
                     createdAt: true,
                     _count: {
                         select: {
-                            leads: { where: { status: { in: ['INTERESTED', 'SHORTLISTED', 'CONTACTED', 'HIRED'] } } },
+                            leads: {
+                                where: {
+                                    status: {
+                                        in: ['INTERESTED', 'SHORTLISTED', 'CONTACTED', 'HIRED'],
+                                    },
+                                },
+                            },
                         },
                     },
                 },
@@ -253,7 +259,8 @@ let JobsService = class JobsService {
                         companyName: lead.tradesperson.tradespersonProfile?.companyName,
                         avgRating: lead.tradesperson.tradespersonProfile?.avgRating ?? 0,
                         reviewCount: lead.tradesperson.tradespersonProfile?.reviewCount ?? 0,
-                        verified: lead.tradesperson.tradespersonProfile?.verificationStatus === 'APPROVED',
+                        verified: lead.tradesperson.tradespersonProfile?.verificationStatus ===
+                            'APPROVED',
                     },
                     quote: quote
                         ? {
