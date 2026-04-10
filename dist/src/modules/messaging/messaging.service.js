@@ -14,14 +14,18 @@ const common_1 = require("@nestjs/common");
 const prisma_service_js_1 = require("../../prisma/prisma.service.js");
 const notifications_service_js_1 = require("../notifications/notifications.service.js");
 const notification_gateway_js_1 = require("../notifications/notification.gateway.js");
+const chat_gateway_js_1 = require("./chat.gateway.js");
+const prisma_error_helper_js_1 = require("../../common/prisma-error.helper.js");
 let MessagingService = class MessagingService {
     prisma;
     notificationsService;
     notificationGateway;
-    constructor(prisma, notificationsService, notificationGateway) {
+    chatGateway;
+    constructor(prisma, notificationsService, notificationGateway, chatGateway) {
         this.prisma = prisma;
         this.notificationsService = notificationsService;
         this.notificationGateway = notificationGateway;
+        this.chatGateway = chatGateway;
     }
     async getConversations(userId) {
         const conversations = await this.prisma.conversation.findMany({
@@ -133,7 +137,8 @@ let MessagingService = class MessagingService {
             conversation.tradespersonId !== userId) {
             throw new common_1.ForbiddenException('Access denied');
         }
-        const message = await this.prisma.message.create({
+        const message = await this.prisma.message
+            .create({
             data: {
                 conversationId,
                 senderId: userId,
@@ -146,10 +151,18 @@ let MessagingService = class MessagingService {
                 readAt: true,
                 createdAt: true,
             },
-        });
+        })
+            .catch(prisma_error_helper_js_1.handlePrismaError);
         await this.prisma.conversation.update({
             where: { id: conversationId },
             data: { updatedAt: new Date() },
+        });
+        this.chatGateway.server.to(`conv:${conversationId}`).emit('new_message', {
+            id: message.id,
+            body: message.body,
+            senderId: message.senderId,
+            readAt: message.readAt?.toISOString() ?? null,
+            createdAt: message.createdAt.toISOString(),
         });
         const recipientId = conversation.homeownerId === userId
             ? conversation.tradespersonId
@@ -186,6 +199,7 @@ exports.MessagingService = MessagingService = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_js_1.PrismaService,
         notifications_service_js_1.NotificationsService,
-        notification_gateway_js_1.NotificationGateway])
+        notification_gateway_js_1.NotificationGateway,
+        chat_gateway_js_1.ChatGateway])
 ], MessagingService);
 //# sourceMappingURL=messaging.service.js.map

@@ -1,12 +1,14 @@
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { NotificationGateway } from '../notifications/notification.gateway.js';
+import { ChatGateway } from './chat.gateway.js';
 import type { SendMessageDto } from './dto/send-message.dto.js';
 export declare class MessagingService {
     private readonly prisma;
     private readonly notificationsService;
     private readonly notificationGateway;
-    constructor(prisma: PrismaService, notificationsService: NotificationsService, notificationGateway: NotificationGateway);
+    private readonly chatGateway;
+    constructor(prisma: PrismaService, notificationsService: NotificationsService, notificationGateway: NotificationGateway, chatGateway: ChatGateway);
     getConversations(userId: string): Promise<{
         conversations: {
             id: string;

@@ -20,6 +20,7 @@ export declare class PaymentsService {
         sessionId: string;
     }>;
     handleWebhook(payload: Buffer, signature: string): Promise<void>;
+    private handleCheckoutExpired;
     private handleCheckoutCompleted;
     private handleChargeRefunded;
     getPaymentHistory(userId: string, page?: number, perPage?: number): Promise<{
@@ -27,8 +28,8 @@ export declare class PaymentsService {
             type: import("@prisma/client").$Enums.PaymentType;
             id: string;
             createdAt: Date;
-            description: string | null;
             status: import("@prisma/client").$Enums.PaymentStatus;
+            description: string | null;
             amountPence: number;
             credits: number | null;
         }[];
@@ -52,8 +53,8 @@ export declare class PaymentsService {
         id: string;
         createdAt: Date;
         userId: string;
-        description: string | null;
         status: import("@prisma/client").$Enums.PaymentStatus;
+        description: string | null;
         amountPence: number;
         credits: number | null;
         stripeSessionId: string | null;
