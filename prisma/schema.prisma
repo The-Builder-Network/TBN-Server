@@ -225,6 +225,7 @@ model MessageTemplate {
 
 model Job {
   id            String    @id @default(cuid())
+  jobNumber     Int       @default(autoincrement()) @unique
   homeownerId   String
   homeowner     User      @relation("HomeownerJobs", fields: [homeownerId], references: [id], onDelete: Cascade)
 
