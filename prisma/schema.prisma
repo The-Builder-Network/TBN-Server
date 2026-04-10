@@ -405,17 +405,18 @@ model ReviewReply {
 // ─── Questions & Answers ─────────────────────────────────────
 
 model Question {
-  id            String   @id @default(cuid())
-  authorId      String
-  author        User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  serviceSlug   String?
-  title         String
-  body          String   @db.Text
-  answerCount   Int      @default(0)
-  createdAt     DateTime @default(now())
-  updatedAt     DateTime @updatedAt
+  id             String   @id @default(cuid())
+  questionNumber Int      @default(autoincrement()) @unique
+  authorId       String
+  author         User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  serviceSlug    String?
+  title          String
+  body           String   @db.Text
+  answerCount    Int      @default(0)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  answers       Answer[]
+  answers        Answer[]
 
   @@index([serviceSlug])
   @@index([createdAt])
