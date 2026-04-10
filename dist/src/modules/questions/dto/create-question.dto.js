@@ -11,6 +11,8 @@ var __metadata = (this && this.__metadata) || function (k, v) {
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreateQuestionDto = void 0;
 const class_validator_1 = require("class-validator");
+const class_transformer_1 = require("class-transformer");
+const sanitize_helper_js_1 = require("../../../common/sanitize.helper.js");
 class CreateQuestionDto {
     title;
     body;
@@ -18,12 +20,14 @@ class CreateQuestionDto {
 }
 exports.CreateQuestionDto = CreateQuestionDto;
 __decorate([
+    (0, class_transformer_1.Transform)(({ value }) => (0, sanitize_helper_js_1.stripHtml)(value)),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MinLength)(5),
     (0, class_validator_1.MaxLength)(200),
     __metadata("design:type", String)
 ], CreateQuestionDto.prototype, "title", void 0);
 __decorate([
+    (0, class_transformer_1.Transform)(({ value }) => (0, sanitize_helper_js_1.stripHtml)(value)),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MinLength)(10),
     (0, class_validator_1.MaxLength)(5000),

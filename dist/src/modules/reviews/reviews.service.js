@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.ReviewsService = void 0;
 const common_1 = require("@nestjs/common");
 const prisma_service_js_1 = require("../../prisma/prisma.service.js");
+const prisma_error_helper_js_1 = require("../../common/prisma-error.helper.js");
 let ReviewsService = class ReviewsService {
     prisma;
     constructor(prisma) {
@@ -49,7 +50,8 @@ let ReviewsService = class ReviewsService {
         if (existing) {
             throw new common_1.ConflictException('You have already left a review for this job');
         }
-        const review = await this.prisma.review.create({
+        const review = await this.prisma.review
+            .create({
             data: {
                 jobId,
                 authorId,
@@ -57,7 +59,8 @@ let ReviewsService = class ReviewsService {
                 rating,
                 comment,
             },
-        });
+        })
+            .catch(prisma_error_helper_js_1.handlePrismaError);
         void this.recalculateRating(tradespersonId);
         return { id: review.id };
     }
