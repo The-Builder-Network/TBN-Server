@@ -14,6 +14,7 @@ const common_1 = require("@nestjs/common");
 const prisma_service_js_1 = require("../../prisma/prisma.service.js");
 const uploads_service_js_1 = require("../uploads/uploads.service.js");
 const postcode_service_js_1 = require("../jobs/postcode.service.js");
+const prisma_error_helper_js_1 = require("../../common/prisma-error.helper.js");
 let UsersService = class UsersService {
     prisma;
     uploads;
@@ -56,7 +57,13 @@ let UsersService = class UsersService {
             where: { subjectId: profile.userId },
             _count: { rating: true },
         });
-        const ratingBreakdown = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+        const ratingBreakdown = {
+            '1': 0,
+            '2': 0,
+            '3': 0,
+            '4': 0,
+            '5': 0,
+        };
         for (const r of allRatings) {
             ratingBreakdown[String(r.rating)] = r._count.rating;
         }
@@ -177,7 +184,8 @@ let UsersService = class UsersService {
             lat = geo.latitude;
             lng = geo.longitude;
         }
-        const updated = await this.prisma.tradespersonProfile.update({
+        const updated = await this.prisma.tradespersonProfile
+            .update({
             where: { userId },
             data: {
                 companyName: dto.companyName,
@@ -195,7 +203,8 @@ let UsersService = class UsersService {
                 portfolioItems: { orderBy: { sortOrder: 'asc' } },
                 messageTemplates: { orderBy: { createdAt: 'asc' } },
             },
-        });
+        })
+            .catch(prisma_error_helper_js_1.handlePrismaError);
         return {
             id: updated.id,
             username: updated.username,
@@ -298,7 +307,11 @@ let UsersService = class UsersService {
                     tradeSlug: dto.tradeSlug,
                 },
             });
-            return { id: service.id, serviceSlug: service.serviceSlug, tradeSlug: service.tradeSlug };
+            return {
+                id: service.id,
+                serviceSlug: service.serviceSlug,
+                tradeSlug: service.tradeSlug,
+            };
         }
         catch {
             throw new common_1.ConflictException('Service already added');
@@ -331,7 +344,12 @@ let UsersService = class UsersService {
                 year: dto.year,
             },
         });
-        return { id: qual.id, name: qual.name, verified: qual.verified, year: qual.year };
+        return {
+            id: qual.id,
+            name: qual.name,
+            verified: qual.verified,
+            year: qual.year,
+        };
     }
     async removeQualification(userId, qualId) {
         const profile = await this.prisma.tradespersonProfile.findUnique({
@@ -362,7 +380,12 @@ let UsersService = class UsersService {
                 category,
             },
         });
-        return { id: item.id, imageUrl: item.imageUrl, title: item.title, category: item.category };
+        return {
+            id: item.id,
+            imageUrl: item.imageUrl,
+            title: item.title,
+            category: item.category,
+        };
     }
     async deletePortfolioItem(userId, itemId) {
         const profile = await this.prisma.tradespersonProfile.findUnique({

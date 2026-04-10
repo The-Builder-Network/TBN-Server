@@ -72,4 +72,10 @@ export class AuthController {
   checkEmail(@Body() body: { email: string }) {
     return this.authService.checkEmail(body.email);
   }
+
+  @Post('check-phone')
+  @HttpCode(HttpStatus.OK)
+  checkPhone(@Body() body: { phone: string }) {
+    return this.authService.checkPhone(body.phone);
+  }
 }

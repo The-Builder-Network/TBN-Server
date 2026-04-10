@@ -147,8 +147,8 @@ export declare class UsersController {
         name: string;
         email: string;
         role: import("@prisma/client").$Enums.UserRole;
-        phone: string | null;
         id: string;
+        phone: string | null;
         avatarUrl: string | null;
         emailVerified: boolean;
         createdAt: Date;
