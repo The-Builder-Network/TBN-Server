@@ -3,6 +3,7 @@ import {
   Get,
   Post,
   Patch,
+  Delete,
   Param,
   Body,
   Query,
@@ -102,5 +103,32 @@ export class QuestionsController {
     @Param('id') answerId: string,
   ) {
     return this.questionsService.markBestAnswer(answerId, user.sub);
+  }
+
+  // ── PATCH /answers/:id — edit answer (TRADESPERSON, author only, no likes) ─
+
+  @Patch('answers/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRADESPERSON')
+  @HttpCode(HttpStatus.OK)
+  async editAnswer(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') answerId: string,
+    @Body() dto: { body: string },
+  ) {
+    return this.questionsService.editAnswer(answerId, user.sub, dto.body);
+  }
+
+  // ── DELETE /answers/:id — delete answer (TRADESPERSON, author only) ────────
+
+  @Delete('answers/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRADESPERSON')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteAnswer(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') answerId: string,
+  ) {
+    return this.questionsService.deleteAnswer(answerId, user.sub);
   }
 }

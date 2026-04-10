@@ -86,12 +86,19 @@ export class UsersController {
     @CurrentUser() user: JwtPayload,
     @UploadedFile(
       new ParseFilePipeBuilder()
-        .addFileTypeValidator({ fileType: /^image\/(jpeg|png)$/ })
+        .addFileTypeValidator({ fileType: /^image\/(jpeg|png|webp)$/ })
         .build({ fileIsRequired: true }),
     )
     file: Express.Multer.File,
   ) {
     return this.usersService.uploadAvatar(user.sub, file);
+  }
+
+  @Delete('me/avatar')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteAvatar(@CurrentUser() user: JwtPayload) {
+    return this.usersService.deleteAvatar(user.sub);
   }
 
   // ── ID DOCUMENT ───────────────────────────────────────────────────────────

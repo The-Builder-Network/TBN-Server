@@ -33,7 +33,11 @@ export class UpdateProfileDto {
   postcode?: string;
 
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) => parseInt(String(value), 10))
+  @Transform(({ value }: { value: unknown }) =>
+    value !== undefined && value !== null
+      ? parseInt(String(value), 10)
+      : undefined,
+  )
   @IsInt()
   @Min(1)
   @Max(200)

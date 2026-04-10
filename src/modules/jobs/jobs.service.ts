@@ -15,8 +15,10 @@ import { JobStatus } from '@prisma/client';
 
 // ── Haversine distance (miles) ────────────────────────────────────────────────
 function haversineDistance(
-  lat1: number, lon1: number,
-  lat2: number, lon2: number,
+  lat1: number,
+  lon1: number,
+  lat2: number,
+  lon2: number,
 ): number {
   const R = 3959; // Earth radius in miles
   const toRad = (d: number) => (d * Math.PI) / 180;
@@ -46,7 +48,7 @@ export class JobsService {
     // 1. Geocode postcode
     const geo = await this.postcode.geocode(dto.postcode);
 
-    // 2. Upload attachments to R2
+    // 2. Upload attachments to AWS S3
     const uploadedAttachments: {
       fileUrl: string;
       fileName: string;
@@ -90,7 +92,11 @@ export class JobsService {
     });
 
     // 4. Run matching algorithm
-    const matchedCount = await this.matchTradespersons(job.id, dto.serviceSlug, geo);
+    const matchedCount = await this.matchTradespersons(
+      job.id,
+      dto.serviceSlug,
+      geo,
+    );
 
     return {
       id: job.id,
@@ -133,8 +139,10 @@ export class JobsService {
     for (const tp of candidates) {
       if (tp.latitude === null || tp.longitude === null) continue;
       const dist = haversineDistance(
-        geo.latitude, geo.longitude,
-        tp.latitude, tp.longitude,
+        geo.latitude,
+        geo.longitude,
+        tp.latitude,
+        tp.longitude,
       );
       if (dist <= tp.workRadiusMiles) {
         matched.push({ userId: tp.userId, distanceMiles: dist });
@@ -192,7 +200,13 @@ export class JobsService {
           createdAt: true,
           _count: {
             select: {
-              leads: { where: { status: { in: ['INTERESTED', 'SHORTLISTED', 'CONTACTED', 'HIRED'] } } },
+              leads: {
+                where: {
+                  status: {
+                    in: ['INTERESTED', 'SHORTLISTED', 'CONTACTED', 'HIRED'],
+                  },
+                },
+              },
             },
           },
         },
@@ -297,7 +311,9 @@ export class JobsService {
         mimeType: a.mimeType,
       })),
       responses: job.leads.map((lead) => {
-        const quote = job.quotes.find((q) => q.tradespersonId === lead.tradespersonId);
+        const quote = job.quotes.find(
+          (q) => q.tradespersonId === lead.tradespersonId,
+        );
         return {
           leadId: lead.id,
           leadStatus: lead.status,
@@ -308,9 +324,11 @@ export class JobsService {
             username: lead.tradesperson.tradespersonProfile?.username,
             companyName: lead.tradesperson.tradespersonProfile?.companyName,
             avgRating: lead.tradesperson.tradespersonProfile?.avgRating ?? 0,
-            reviewCount: lead.tradesperson.tradespersonProfile?.reviewCount ?? 0,
+            reviewCount:
+              lead.tradesperson.tradespersonProfile?.reviewCount ?? 0,
             verified:
-              lead.tradesperson.tradespersonProfile?.verificationStatus === 'APPROVED',
+              lead.tradesperson.tradespersonProfile?.verificationStatus ===
+              'APPROVED',
           },
           quote: quote
             ? {
@@ -336,11 +354,14 @@ export class JobsService {
     const job = await this.prisma.job.findUnique({ where: { id: jobId } });
 
     if (!job) throw new NotFoundException('Job not found');
-    if (job.homeownerId !== homeownerId) throw new ForbiddenException('Not your job');
+    if (job.homeownerId !== homeownerId)
+      throw new ForbiddenException('Not your job');
 
     const terminal: JobStatus[] = ['CANCELLED', 'CLOSED', 'COMPLETED'];
     if (terminal.includes(job.status)) {
-      throw new BadRequestException(`Cannot update a job with status ${job.status}`);
+      throw new BadRequestException(
+        `Cannot update a job with status ${job.status}`,
+      );
     }
 
     const updated = await this.prisma.job.update({

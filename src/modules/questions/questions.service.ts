@@ -2,6 +2,7 @@ import {
   Injectable,
   NotFoundException,
   ForbiddenException,
+  BadRequestException,
 } from '@nestjs/common';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { CreateQuestionDto } from './dto/create-question.dto.js';
@@ -23,7 +24,7 @@ export class QuestionsService {
         serviceSlug: dto.serviceSlug,
       },
     });
-    return { id: question.id };
+    return { id: question.id, questionNumber: question.questionNumber };
   }
 
   // ── GET /questions ───────────────────────────────────────────────────────
@@ -60,6 +61,7 @@ export class QuestionsService {
 
     const data = questions.map((q) => ({
       id: q.id,
+      questionNumber: q.questionNumber,
       title: q.title,
       body: q.body,
       serviceSlug: q.serviceSlug ?? undefined,
@@ -118,6 +120,7 @@ export class QuestionsService {
 
     return {
       id: question.id,
+      questionNumber: question.questionNumber,
       title: question.title,
       body: question.body,
       serviceSlug: question.serviceSlug ?? undefined,
@@ -127,6 +130,7 @@ export class QuestionsService {
       createdAt: question.createdAt.toISOString(),
       answers: question.answers.map((a) => ({
         id: a.id,
+        authorId: a.authorId,
         authorName: a.author.name,
         authorAvatar: a.author.avatarUrl ?? undefined,
         authorUsername: a.author.tradespersonProfile?.username ?? undefined,
@@ -177,6 +181,11 @@ export class QuestionsService {
     });
     if (!answer) throw new NotFoundException('Answer not found');
 
+    // Prevent author from liking their own answer
+    if (answer.authorId === userId) {
+      throw new ForbiddenException('You cannot like your own answer');
+    }
+
     const existing = await this.prisma.answerLike.findUnique({
       where: { answerId_userId: { answerId, userId } },
     });
@@ -214,6 +223,49 @@ export class QuestionsService {
       });
       return { liked: true, likesCount: updated.likesCount };
     }
+  }
+
+  // ── PATCH /answers/:id — edit (only by author, only if no likes) ───────────
+
+  async editAnswer(answerId: string, userId: string, body: string) {
+    const answer = await this.prisma.answer.findUnique({
+      where: { id: answerId },
+    });
+    if (!answer) throw new NotFoundException('Answer not found');
+    if (answer.authorId !== userId) {
+      throw new ForbiddenException('You can only edit your own answers');
+    }
+    if (answer.likesCount > 0) {
+      throw new BadRequestException(
+        'Cannot edit an answer that has been liked',
+      );
+    }
+
+    const updated = await this.prisma.answer.update({
+      where: { id: answerId },
+      data: { body },
+    });
+    return { id: updated.id };
+  }
+
+  // ── DELETE /answers/:id — delete (only by author, any time) ───────────────
+
+  async deleteAnswer(answerId: string, userId: string) {
+    const answer = await this.prisma.answer.findUnique({
+      where: { id: answerId },
+    });
+    if (!answer) throw new NotFoundException('Answer not found');
+    if (answer.authorId !== userId) {
+      throw new ForbiddenException('You can only delete your own answers');
+    }
+
+    await this.prisma.$transaction([
+      this.prisma.answer.delete({ where: { id: answerId } }),
+      this.prisma.question.update({
+        where: { id: answer.questionId },
+        data: { answerCount: { decrement: 1 } },
+      }),
+    ]);
   }
 
   // ── PATCH /answers/:id/best ────────────────────────────────────────────────

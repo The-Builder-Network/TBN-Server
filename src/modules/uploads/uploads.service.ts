@@ -12,6 +12,7 @@ import {
 } from '@aws-sdk/client-s3';
 import { randomUUID } from 'crypto';
 import * as path from 'path';
+import { URL } from 'url';
 
 // ── Allowed upload MIME types and their magic byte signatures ───────────────
 const ALLOWED_UPLOAD_TYPES: { mime: string; magic: Buffer }[] = [
@@ -57,30 +58,27 @@ export class UploadsService {
   private readonly logger = new Logger(UploadsService.name);
   private readonly s3: S3Client;
   private readonly bucket: string;
-  private readonly publicUrl: string;
+  private readonly cdnUrl: string;
 
   constructor(private readonly config: ConfigService) {
-    const accountId = config.get<string>('R2_ACCOUNT_ID') ?? '';
-    const endpoint =
-      config.get<string>('R2_ENDPOINT') ??
-      `https://${accountId}.r2.cloudflarestorage.com`;
-
     this.s3 = new S3Client({
-      region: 'auto',
-      endpoint,
+      region: config.get<string>('AWS_REGION') ?? 'us-east-1',
       credentials: {
-        accessKeyId: config.get<string>('R2_ACCESS_KEY_ID') ?? '',
-        secretAccessKey: config.get<string>('R2_SECRET_ACCESS_KEY') ?? '',
+        accessKeyId: config.get<string>('AWS_ACCESS_KEY_ID') ?? '',
+        secretAccessKey: config.get<string>('AWS_SECRET_ACCESS_KEY') ?? '',
       },
     });
 
-    this.bucket = config.get<string>('R2_BUCKET_NAME') ?? 'tbn-uploads';
-    this.publicUrl = config.get<string>('R2_PUBLIC_URL') ?? '';
+    this.bucket = config.get<string>('AWS_S3_BUCKET') ?? 'tbn-uploads';
+    this.cdnUrl = (config.get<string>('CLOUDFRONT_URL') ?? '').replace(
+      /\/$/,
+      '',
+    ); // strip trailing slash
   }
 
   /**
-   * Upload a single file buffer to Cloudflare R2.
-   * Returns the public URL of the uploaded file.
+   * Upload a single file buffer to AWS S3.
+   * Returns the CloudFront CDN URL of the uploaded file.
    */
   async uploadFile(
     fileBuffer: Buffer,
@@ -109,14 +107,24 @@ export class UploadsService {
       );
     }
 
-    return `${this.publicUrl}/${key}`;
+    return `${this.cdnUrl}/${key}`;
   }
 
   /**
-   * Delete a file from R2 by its public URL.
+   * Delete a file from S3 by its CloudFront CDN URL or S3 key.
    */
-  async deleteFile(publicFileUrl: string): Promise<void> {
-    const key = publicFileUrl.replace(`${this.publicUrl}/`, '');
+  async deleteFile(fileUrl: string): Promise<void> {
+    let key: string;
+    try {
+      // Extract the path component from a full URL (works for both CF and S3 URLs)
+      key = new URL(fileUrl).pathname.replace(/^\//, '');
+    } catch {
+      // Fallback: treat as raw key
+      key = fileUrl.replace(`${this.cdnUrl}/`, '');
+    }
+
+    if (!key) return;
+
     try {
       await this.s3.send(
         new DeleteObjectCommand({
@@ -126,7 +134,7 @@ export class UploadsService {
       );
     } catch (err) {
       // Log but don't throw — deletion failures are not fatal
-      this.logger.error('R2 delete failed:', (err as Error).message);
+      this.logger.error('S3 delete failed:', (err as Error).message);
     }
   }
 }
