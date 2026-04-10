@@ -11,6 +11,7 @@ export declare class JobsService {
     constructor(prisma: PrismaService, uploads: UploadsService, postcode: PostcodeService);
     createJob(homeownerId: string, dto: CreateJobDto, attachmentFiles: Express.Multer.File[]): Promise<{
         id: string;
+        jobNumber: number;
         status: import("@prisma/client").$Enums.JobStatus;
         matchedCount: number;
         createdAt: Date;
@@ -19,6 +20,7 @@ export declare class JobsService {
     getJobs(homeownerId: string, query: GetJobsQueryDto): Promise<{
         data: {
             id: string;
+            jobNumber: number;
             title: string;
             status: import("@prisma/client").$Enums.JobStatus;
             serviceSlug: string;
@@ -36,6 +38,7 @@ export declare class JobsService {
     }>;
     getJob(jobId: string, requesterId: string, requesterRole: string): Promise<{
         id: string;
+        jobNumber: number;
         title: string;
         description: string;
         serviceSlug: string;

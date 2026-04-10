@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.CreateJobDto = void 0;
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
+const sanitize_helper_js_1 = require("../../../common/sanitize.helper.js");
 class CreateJobDto {
     title;
     description;
@@ -22,12 +23,14 @@ class CreateJobDto {
 }
 exports.CreateJobDto = CreateJobDto;
 __decorate([
+    (0, class_transformer_1.Transform)(({ value }) => (0, sanitize_helper_js_1.stripHtml)(value)),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsNotEmpty)(),
     (0, class_validator_1.MaxLength)(70),
     __metadata("design:type", String)
 ], CreateJobDto.prototype, "title", void 0);
 __decorate([
+    (0, class_transformer_1.Transform)(({ value }) => (0, sanitize_helper_js_1.stripHtml)(value)),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.IsNotEmpty)(),
     __metadata("design:type", String)

@@ -67,6 +67,7 @@ let JobsService = class JobsService {
         const matchedCount = await this.matchTradespersons(job.id, dto.serviceSlug, geo);
         return {
             id: job.id,
+            jobNumber: job.jobNumber,
             status: job.status,
             matchedCount,
             createdAt: job.createdAt,
@@ -133,6 +134,7 @@ let JobsService = class JobsService {
                 },
                 select: {
                     id: true,
+                    jobNumber: true,
                     title: true,
                     status: true,
                     serviceSlug: true,
@@ -150,6 +152,7 @@ let JobsService = class JobsService {
         return {
             data: jobs.map((j) => ({
                 id: j.id,
+                jobNumber: j.jobNumber,
                 title: j.title,
                 status: j.status,
                 serviceSlug: j.serviceSlug,
@@ -222,6 +225,7 @@ let JobsService = class JobsService {
         }
         return {
             id: job.id,
+            jobNumber: job.jobNumber,
             title: job.title,
             description: job.description,
             serviceSlug: job.serviceSlug,
