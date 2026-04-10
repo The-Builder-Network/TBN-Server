@@ -82,9 +82,19 @@ let PaymentsService = PaymentsService_1 = class PaymentsService {
         if (event.type === 'checkout.session.completed') {
             await this.handleCheckoutCompleted(event.data.object);
         }
+        else if (event.type === 'checkout.session.expired') {
+            await this.handleCheckoutExpired(event.data.object);
+        }
         else if (event.type === 'charge.refunded') {
             await this.handleChargeRefunded(event.data.object);
         }
+    }
+    async handleCheckoutExpired(session) {
+        await this.prisma.payment.updateMany({
+            where: { stripeSessionId: session.id, status: 'PENDING' },
+            data: { status: 'FAILED' },
+        });
+        this.logger.log(`Checkout session expired: marked FAILED for session ${session.id}`);
     }
     async handleCheckoutCompleted(session) {
         const payment = await this.prisma.payment.findUnique({
