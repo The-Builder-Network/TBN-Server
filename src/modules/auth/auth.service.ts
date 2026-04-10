@@ -3,6 +3,7 @@ import {
   UnauthorizedException,
   BadRequestException,
   ConflictException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
@@ -13,6 +14,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import type { RegisterDto } from './dto/register.dto.js';
 import type { LoginDto } from './dto/login.dto.js';
 import { $Enums } from '@prisma/client';
+import { handlePrismaError } from '../../common/prisma-error.helper.js';
 
 export interface JwtPayload {
   sub: string;
@@ -22,6 +24,7 @@ export interface JwtPayload {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
   private readonly resend: Resend | null;
 
   constructor(
@@ -83,34 +86,36 @@ export class AuthService {
     const passwordHash = await bcrypt.hash(dto.password, 12);
     const emailVerifyToken = randomBytes(32).toString('hex');
 
-    const user = await this.prisma.user.create({
-      data: {
-        email: dto.email,
-        passwordHash,
-        name: dto.name,
-        phone: dto.phone,
-        role: dto.role as $Enums.UserRole,
-        emailVerifyToken,
-        ...(dto.role === 'TRADESPERSON'
-          ? {
-              tradespersonProfile: {
-                create: {
-                  username:
-                    dto.email
-                      .split('@')[0]
-                      .toLowerCase()
-                      .replace(/[^a-z0-9]/g, '') +
-                    '-' +
-                    randomBytes(3).toString('hex'),
+    const user = await this.prisma.user
+      .create({
+        data: {
+          email: dto.email,
+          passwordHash,
+          name: dto.name,
+          phone: dto.phone,
+          role: dto.role as $Enums.UserRole,
+          emailVerifyToken,
+          ...(dto.role === 'TRADESPERSON'
+            ? {
+                tradespersonProfile: {
+                  create: {
+                    username:
+                      dto.email
+                        .split('@')[0]
+                        .toLowerCase()
+                        .replace(/[^a-z0-9]/g, '') +
+                      '-' +
+                      randomBytes(3).toString('hex'),
+                  },
                 },
-              },
-              leadCredit: {
-                create: { balance: 0 },
-              },
-            }
-          : {}),
-      },
-    });
+                leadCredit: {
+                  create: { balance: 0 },
+                },
+              }
+            : {}),
+        },
+      })
+      .catch(handlePrismaError);
 
     // Send verification email (fire-and-forget)
     void this.sendVerificationEmail(user.email, emailVerifyToken);
@@ -244,6 +249,13 @@ export class AuthService {
     return { exists: !!user };
   }
 
+  // ── Check Phone ──────────────────────────────────────────────
+
+  async checkPhone(phone: string): Promise<{ exists: boolean }> {
+    const user = await this.prisma.user.findFirst({ where: { phone } });
+    return { exists: !!user };
+  }
+
   // ── Email helpers ────────────────────────────────────────────
 
   private async sendVerificationEmail(email: string, token: string) {
@@ -257,7 +269,7 @@ export class AuthService {
         html: `<p>Click <a href="${url}">here</a> to verify your email.</p>`,
       });
     } catch (err) {
-      console.error('Failed to send verification email:', err);
+      this.logger.error('Failed to send verification email:', err);
     }
   }
 
@@ -272,7 +284,7 @@ export class AuthService {
         html: `<p>Click <a href="${url}">here</a> to reset your password. This link expires in 1 hour.</p>`,
       });
     } catch (err) {
-      console.error('Failed to send reset email:', err);
+      this.logger.error('Failed to send reset email:', err);
     }
   }
 }

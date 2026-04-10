@@ -94,6 +94,7 @@ export class JobsService {
 
     return {
       id: job.id,
+      jobNumber: job.jobNumber,
       status: job.status,
       matchedCount,
       createdAt: job.createdAt,
@@ -182,6 +183,7 @@ export class JobsService {
         },
         select: {
           id: true,
+          jobNumber: true,
           title: true,
           status: true,
           serviceSlug: true,
@@ -200,6 +202,7 @@ export class JobsService {
     return {
       data: jobs.map((j) => ({
         id: j.id,
+        jobNumber: j.jobNumber,
         title: j.title,
         status: j.status,
         serviceSlug: j.serviceSlug,
@@ -278,6 +281,7 @@ export class JobsService {
 
     return {
       id: job.id,
+      jobNumber: job.jobNumber,
       title: job.title,
       description: job.description,
       serviceSlug: job.serviceSlug,

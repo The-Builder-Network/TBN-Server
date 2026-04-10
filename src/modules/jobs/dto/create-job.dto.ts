@@ -6,13 +6,16 @@ import {
   IsObject,
 } from 'class-validator';
 import { Transform } from 'class-transformer';
+import { stripHtml } from '../../../common/sanitize.helper.js';
 
 export class CreateJobDto {
+  @Transform(({ value }: { value: unknown }) => stripHtml(value))
   @IsString()
   @IsNotEmpty()
   @MaxLength(70)
   title!: string;
 
+  @Transform(({ value }: { value: unknown }) => stripHtml(value))
   @IsString()
   @IsNotEmpty()
   description!: string;

@@ -6,7 +6,9 @@ import {
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { NotificationsService } from '../notifications/notifications.service.js';
 import { NotificationGateway } from '../notifications/notification.gateway.js';
+import { ChatGateway } from './chat.gateway.js';
 import type { SendMessageDto } from './dto/send-message.dto.js';
+import { handlePrismaError } from '../../common/prisma-error.helper.js';
 
 @Injectable()
 export class MessagingService {
@@ -14,6 +16,7 @@ export class MessagingService {
     private readonly prisma: PrismaService,
     private readonly notificationsService: NotificationsService,
     private readonly notificationGateway: NotificationGateway,
+    private readonly chatGateway: ChatGateway,
   ) {}
 
   // ── GET /conversations ─────────────────────────────────────────────────────
@@ -160,25 +163,36 @@ export class MessagingService {
       throw new ForbiddenException('Access denied');
     }
 
-    const message = await this.prisma.message.create({
-      data: {
-        conversationId,
-        senderId: userId,
-        body: dto.body,
-      },
-      select: {
-        id: true,
-        body: true,
-        senderId: true,
-        readAt: true,
-        createdAt: true,
-      },
-    });
+    const message = await this.prisma.message
+      .create({
+        data: {
+          conversationId,
+          senderId: userId,
+          body: dto.body,
+        },
+        select: {
+          id: true,
+          body: true,
+          senderId: true,
+          readAt: true,
+          createdAt: true,
+        },
+      })
+      .catch(handlePrismaError);
 
     // Touch conversation updatedAt for ordering
     await this.prisma.conversation.update({
       where: { id: conversationId },
       data: { updatedAt: new Date() },
+    });
+
+    // Broadcast to all clients in the conversation room
+    this.chatGateway.server.to(`conv:${conversationId}`).emit('new_message', {
+      id: message.id,
+      body: message.body,
+      senderId: message.senderId,
+      readAt: message.readAt?.toISOString() ?? null,
+      createdAt: message.createdAt.toISOString(),
     });
 
     // Notify the other party

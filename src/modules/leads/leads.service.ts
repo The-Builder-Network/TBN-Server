@@ -135,119 +135,122 @@ export class LeadsService {
     tradespersonId: string,
     dto: ExpressInterestDto,
   ) {
-    // 1. Verify lead exists and belongs to this tradesperson
-    const lead = await this.prisma.lead.findUnique({
-      where: { id: leadId },
-      include: { job: { select: { id: true, homeownerId: true } } },
-    });
+    // Atomic transaction: verify lead, deduct credits, update lead, create quote + conversation
+    const result = await this.prisma.$transaction(
+      async (tx) => {
+        // 1. Verify lead exists and belongs to this tradesperson (inside tx to prevent race)
+        const lead = await tx.lead.findUnique({
+          where: { id: leadId },
+          include: { job: { select: { id: true, homeownerId: true } } },
+        });
 
-    if (!lead) throw new NotFoundException('Lead not found');
-    if (lead.tradespersonId !== tradespersonId)
-      throw new ForbiddenException('Access denied');
-    if (lead.status !== LeadStatus.AVAILABLE)
-      throw new BadRequestException(
-        `Lead is not available (current status: ${lead.status})`,
-      );
+        if (!lead) throw new NotFoundException('Lead not found');
+        if (lead.tradespersonId !== tradespersonId)
+          throw new ForbiddenException('Access denied');
+        if (lead.status !== LeadStatus.AVAILABLE)
+          throw new BadRequestException(
+            `Lead is not available (current status: ${lead.status})`,
+          );
 
-    const creditCost = lead.creditCost;
+        const creditCost = lead.creditCost;
 
-    // 2. Atomic transaction: deduct credits, update lead, create quote + conversation
-    const result = await this.prisma.$transaction(async (tx) => {
-      // Check balance
-      const credit = await tx.leadCredit.findUnique({
-        where: { userId: tradespersonId },
-      });
+        // 2. Check balance
+        const credit = await tx.leadCredit.findUnique({
+          where: { userId: tradespersonId },
+        });
 
-      const balance = credit?.balance ?? 0;
-      if (balance < creditCost) {
-        throw new HttpException(
-          {
-            error: 'INSUFFICIENT_CREDITS',
-            required: creditCost,
-            balance,
+        const balance = credit?.balance ?? 0;
+        if (balance < creditCost) {
+          throw new HttpException(
+            {
+              error: 'INSUFFICIENT_CREDITS',
+              required: creditCost,
+              balance,
+            },
+            HttpStatus.PAYMENT_REQUIRED,
+          );
+        }
+
+        // Deduct credits
+        const updated = await tx.leadCredit.update({
+          where: { userId: tradespersonId },
+          data: { balance: { decrement: creditCost } },
+        });
+
+        // Update lead status
+        await tx.lead.update({
+          where: { id: leadId },
+          data: {
+            status: LeadStatus.INTERESTED,
+            interestedAt: new Date(),
           },
-          HttpStatus.PAYMENT_REQUIRED,
-        );
-      }
+        });
 
-      // Deduct credits
-      const updated = await tx.leadCredit.update({
-        where: { userId: tradespersonId },
-        data: { balance: { decrement: creditCost } },
-      });
+        // Create quote
+        const quote = await tx.quote.create({
+          data: {
+            jobId: lead.job.id,
+            tradespersonId,
+            message: dto.message,
+            amountPence: dto.quoteAmountPence ?? null,
+            status: 'PENDING',
+          },
+        });
 
-      // Update lead status
-      await tx.lead.update({
-        where: { id: leadId },
-        data: {
-          status: LeadStatus.INTERESTED,
-          interestedAt: new Date(),
-        },
-      });
-
-      // Create quote
-      const quote = await tx.quote.create({
-        data: {
-          jobId: lead.job.id,
-          tradespersonId,
-          message: dto.message,
-          amountPence: dto.quoteAmountPence ?? null,
-          status: 'PENDING',
-        },
-      });
-
-      // Create conversation (upsert to avoid duplicate)
-      const conversation = await tx.conversation.upsert({
-        where: {
-          jobId_homeownerId_tradespersonId: {
+        // Create conversation (upsert to avoid duplicate)
+        const conversation = await tx.conversation.upsert({
+          where: {
+            jobId_homeownerId_tradespersonId: {
+              jobId: lead.job.id,
+              homeownerId: lead.job.homeownerId,
+              tradespersonId,
+            },
+          },
+          create: {
             jobId: lead.job.id,
             homeownerId: lead.job.homeownerId,
             tradespersonId,
-          },
-        },
-        create: {
-          jobId: lead.job.id,
-          homeownerId: lead.job.homeownerId,
-          tradespersonId,
-          messages: {
-            create: {
-              senderId: tradespersonId,
-              body: dto.message,
+            messages: {
+              create: {
+                senderId: tradespersonId,
+                body: dto.message,
+              },
             },
           },
-        },
-        update: {},
-      });
+          update: {},
+        });
 
-      // Notify homeowner
-      await tx.notification.create({
-        data: {
-          userId: lead.job.homeownerId,
-          type: 'NEW_INTEREST',
-          title: 'A tradesperson is interested in your job',
-          linkUrl: `/homeowner/my-jobs/${lead.job.id}`,
-        },
-      });
-
-      if (dto.quoteAmountPence) {
+        // Notify homeowner
         await tx.notification.create({
           data: {
             userId: lead.job.homeownerId,
-            type: 'NEW_QUOTE',
-            title: 'New quote received',
+            type: 'NEW_INTEREST',
+            title: 'A tradesperson is interested in your job',
             linkUrl: `/homeowner/my-jobs/${lead.job.id}`,
           },
         });
-      }
 
-      return {
-        leadStatus: LeadStatus.INTERESTED,
-        creditsDeducted: creditCost,
-        newBalance: updated.balance,
-        quoteId: quote.id,
-        conversationId: conversation.id,
-      };
-    });
+        if (dto.quoteAmountPence) {
+          await tx.notification.create({
+            data: {
+              userId: lead.job.homeownerId,
+              type: 'NEW_QUOTE',
+              title: 'New quote received',
+              linkUrl: `/homeowner/my-jobs/${lead.job.id}`,
+            },
+          });
+        }
+
+        return {
+          leadStatus: LeadStatus.INTERESTED,
+          creditsDeducted: creditCost,
+          newBalance: updated.balance,
+          quoteId: quote.id,
+          conversationId: conversation.id,
+        };
+      },
+      { isolationLevel: 'Serializable' },
+    );
 
     // Trigger auto-topup asynchronously if balance dropped below threshold
     this.paymentsService.triggerAutoTopupIfNeeded(tradespersonId).catch(() => {
