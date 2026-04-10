@@ -54,6 +54,9 @@ let AuthController = class AuthController {
     checkEmail(body) {
         return this.authService.checkEmail(body.email);
     }
+    checkPhone(body) {
+        return this.authService.checkPhone(body.phone);
+    }
 };
 exports.AuthController = AuthController;
 __decorate([
@@ -119,6 +122,14 @@ __decorate([
     __metadata("design:paramtypes", [Object]),
     __metadata("design:returntype", void 0)
 ], AuthController.prototype, "checkEmail", null);
+__decorate([
+    (0, common_1.Post)('check-phone'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", void 0)
+], AuthController.prototype, "checkPhone", null);
 exports.AuthController = AuthController = __decorate([
     (0, throttler_1.Throttle)({ default: { limit: 5, ttl: 60_000 } }),
     (0, common_1.Controller)('api/v1/auth'),

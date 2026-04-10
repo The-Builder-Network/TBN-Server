@@ -41,6 +41,7 @@ var __importStar = (this && this.__importStar) || (function () {
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var AuthService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.AuthService = void 0;
 const common_1 = require("@nestjs/common");
@@ -50,10 +51,12 @@ const bcrypt = __importStar(require("bcryptjs"));
 const crypto_1 = require("crypto");
 const resend_1 = require("resend");
 const prisma_service_js_1 = require("../../prisma/prisma.service.js");
-let AuthService = class AuthService {
+const prisma_error_helper_js_1 = require("../../common/prisma-error.helper.js");
+let AuthService = AuthService_1 = class AuthService {
     prisma;
     jwt;
     config;
+    logger = new common_1.Logger(AuthService_1.name);
     resend;
     constructor(prisma, jwt, config) {
         this.prisma = prisma;
@@ -89,7 +92,8 @@ let AuthService = class AuthService {
         }
         const passwordHash = await bcrypt.hash(dto.password, 12);
         const emailVerifyToken = (0, crypto_1.randomBytes)(32).toString('hex');
-        const user = await this.prisma.user.create({
+        const user = await this.prisma.user
+            .create({
             data: {
                 email: dto.email,
                 passwordHash,
@@ -115,7 +119,8 @@ let AuthService = class AuthService {
                     }
                     : {}),
             },
-        });
+        })
+            .catch(prisma_error_helper_js_1.handlePrismaError);
         void this.sendVerificationEmail(user.email, emailVerifyToken);
         const tokens = this.signTokens(user.id, user.email, user.role);
         return { user: this.formatUser(user), ...tokens };
@@ -212,6 +217,10 @@ let AuthService = class AuthService {
         const user = await this.prisma.user.findUnique({ where: { email } });
         return { exists: !!user };
     }
+    async checkPhone(phone) {
+        const user = await this.prisma.user.findFirst({ where: { phone } });
+        return { exists: !!user };
+    }
     async sendVerificationEmail(email, token) {
         if (!this.resend)
             return;
@@ -225,7 +234,7 @@ let AuthService = class AuthService {
             });
         }
         catch (err) {
-            console.error('Failed to send verification email:', err);
+            this.logger.error('Failed to send verification email:', err);
         }
     }
     async sendPasswordResetEmail(email, token) {
@@ -241,12 +250,12 @@ let AuthService = class AuthService {
             });
         }
         catch (err) {
-            console.error('Failed to send reset email:', err);
+            this.logger.error('Failed to send reset email:', err);
         }
     }
 };
 exports.AuthService = AuthService;
-exports.AuthService = AuthService = __decorate([
+exports.AuthService = AuthService = AuthService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [prisma_service_js_1.PrismaService,
         jwt_1.JwtService,

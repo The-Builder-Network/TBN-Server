@@ -12,6 +12,7 @@ export declare class AuthService {
     private readonly prisma;
     private readonly jwt;
     private readonly config;
+    private readonly logger;
     private readonly resend;
     constructor(prisma: PrismaService, jwt: JwtService, config: ConfigService);
     private signTokens;
@@ -68,6 +69,9 @@ export declare class AuthService {
         message: string;
     }>;
     checkEmail(email: string): Promise<{
+        exists: boolean;
+    }>;
+    checkPhone(phone: string): Promise<{
         exists: boolean;
     }>;
     private sendVerificationEmail;

@@ -65,4 +65,9 @@ export declare class AuthController {
     }): Promise<{
         exists: boolean;
     }>;
+    checkPhone(body: {
+        phone: string;
+    }): Promise<{
+        exists: boolean;
+    }>;
 }
