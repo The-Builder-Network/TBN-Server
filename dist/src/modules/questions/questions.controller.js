@@ -52,6 +52,12 @@ let QuestionsController = class QuestionsController {
     async markBest(user, answerId) {
         return this.questionsService.markBestAnswer(answerId, user.sub);
     }
+    async editAnswer(user, answerId, dto) {
+        return this.questionsService.editAnswer(answerId, user.sub, dto.body);
+    }
+    async deleteAnswer(user, answerId) {
+        return this.questionsService.deleteAnswer(answerId, user.sub);
+    }
 };
 exports.QuestionsController = QuestionsController;
 __decorate([
@@ -114,6 +120,29 @@ __decorate([
     __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
 ], QuestionsController.prototype, "markBest", null);
+__decorate([
+    (0, common_1.Patch)('answers/:id'),
+    (0, common_1.UseGuards)(jwt_auth_guard_js_1.JwtAuthGuard, roles_guard_js_1.RolesGuard),
+    (0, roles_decorator_js_1.Roles)('TRADESPERSON'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.OK),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
+    __param(1, (0, common_1.Param)('id')),
+    __param(2, (0, common_1.Body)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String, Object]),
+    __metadata("design:returntype", Promise)
+], QuestionsController.prototype, "editAnswer", null);
+__decorate([
+    (0, common_1.Delete)('answers/:id'),
+    (0, common_1.UseGuards)(jwt_auth_guard_js_1.JwtAuthGuard, roles_guard_js_1.RolesGuard),
+    (0, roles_decorator_js_1.Roles)('TRADESPERSON'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], QuestionsController.prototype, "deleteAnswer", null);
 exports.QuestionsController = QuestionsController = __decorate([
     (0, common_1.Controller)('api/v1'),
     __metadata("design:paramtypes", [questions_service_js_1.QuestionsService])

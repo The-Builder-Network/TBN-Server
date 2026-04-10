@@ -26,7 +26,7 @@ let QuestionsService = class QuestionsService {
                 serviceSlug: dto.serviceSlug,
             },
         });
-        return { id: question.id };
+        return { id: question.id, questionNumber: question.questionNumber };
     }
     async getQuestions(query) {
         const { serviceSlug, authorId, sort = 'createdAt', order = 'desc', page = 1, perPage = 20, } = query;
@@ -52,6 +52,7 @@ let QuestionsService = class QuestionsService {
         ]);
         const data = questions.map((q) => ({
             id: q.id,
+            questionNumber: q.questionNumber,
             title: q.title,
             body: q.body,
             serviceSlug: q.serviceSlug ?? undefined,
@@ -105,6 +106,7 @@ let QuestionsService = class QuestionsService {
             throw new common_1.NotFoundException('Question not found');
         return {
             id: question.id,
+            questionNumber: question.questionNumber,
             title: question.title,
             body: question.body,
             serviceSlug: question.serviceSlug ?? undefined,
@@ -114,6 +116,7 @@ let QuestionsService = class QuestionsService {
             createdAt: question.createdAt.toISOString(),
             answers: question.answers.map((a) => ({
                 id: a.id,
+                authorId: a.authorId,
                 authorName: a.author.name,
                 authorAvatar: a.author.avatarUrl ?? undefined,
                 authorUsername: a.author.tradespersonProfile?.username ?? undefined,
@@ -153,6 +156,9 @@ let QuestionsService = class QuestionsService {
         });
         if (!answer)
             throw new common_1.NotFoundException('Answer not found');
+        if (answer.authorId === userId) {
+            throw new common_1.ForbiddenException('You cannot like your own answer');
+        }
         const existing = await this.prisma.answerLike.findUnique({
             where: { answerId_userId: { answerId, userId } },
         });
@@ -188,6 +194,41 @@ let QuestionsService = class QuestionsService {
             });
             return { liked: true, likesCount: updated.likesCount };
         }
+    }
+    async editAnswer(answerId, userId, body) {
+        const answer = await this.prisma.answer.findUnique({
+            where: { id: answerId },
+        });
+        if (!answer)
+            throw new common_1.NotFoundException('Answer not found');
+        if (answer.authorId !== userId) {
+            throw new common_1.ForbiddenException('You can only edit your own answers');
+        }
+        if (answer.likesCount > 0) {
+            throw new common_1.BadRequestException('Cannot edit an answer that has been liked');
+        }
+        const updated = await this.prisma.answer.update({
+            where: { id: answerId },
+            data: { body },
+        });
+        return { id: updated.id };
+    }
+    async deleteAnswer(answerId, userId) {
+        const answer = await this.prisma.answer.findUnique({
+            where: { id: answerId },
+        });
+        if (!answer)
+            throw new common_1.NotFoundException('Answer not found');
+        if (answer.authorId !== userId) {
+            throw new common_1.ForbiddenException('You can only delete your own answers');
+        }
+        await this.prisma.$transaction([
+            this.prisma.answer.delete({ where: { id: answerId } }),
+            this.prisma.question.update({
+                where: { id: answer.questionId },
+                data: { answerCount: { decrement: 1 } },
+            }),
+        ]);
     }
     async markBestAnswer(answerId, userId) {
         const answer = await this.prisma.answer.findUnique({

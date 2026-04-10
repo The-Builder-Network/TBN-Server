@@ -7,10 +7,12 @@ export declare class QuestionsService {
     constructor(prisma: PrismaService);
     createQuestion(authorId: string, dto: CreateQuestionDto): Promise<{
         id: string;
+        questionNumber: number;
     }>;
     getQuestions(query: GetQuestionsQueryDto): Promise<{
         data: {
             id: string;
+            questionNumber: number;
             title: string;
             body: string;
             serviceSlug: string | undefined;
@@ -28,6 +30,7 @@ export declare class QuestionsService {
     }>;
     getQuestion(id: string, currentUserId?: string): Promise<{
         id: string;
+        questionNumber: number;
         title: string;
         body: string;
         serviceSlug: string | undefined;
@@ -37,6 +40,7 @@ export declare class QuestionsService {
         createdAt: string;
         answers: {
             id: string;
+            authorId: string;
             authorName: string;
             authorAvatar: string | undefined;
             authorUsername: string | undefined;
@@ -55,5 +59,9 @@ export declare class QuestionsService {
         liked: boolean;
         likesCount: number;
     }>;
+    editAnswer(answerId: string, userId: string, body: string): Promise<{
+        id: string;
+    }>;
+    deleteAnswer(answerId: string, userId: string): Promise<void>;
     markBestAnswer(answerId: string, userId: string): Promise<void>;
 }

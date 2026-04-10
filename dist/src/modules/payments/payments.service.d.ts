@@ -28,8 +28,8 @@ export declare class PaymentsService {
             type: import("@prisma/client").$Enums.PaymentType;
             id: string;
             createdAt: Date;
-            status: import("@prisma/client").$Enums.PaymentStatus;
             description: string | null;
+            status: import("@prisma/client").$Enums.PaymentStatus;
             amountPence: number;
             credits: number | null;
         }[];
@@ -53,8 +53,8 @@ export declare class PaymentsService {
         id: string;
         createdAt: Date;
         userId: string;
-        status: import("@prisma/client").$Enums.PaymentStatus;
         description: string | null;
+        status: import("@prisma/client").$Enums.PaymentStatus;
         amountPence: number;
         credits: number | null;
         stripeSessionId: string | null;

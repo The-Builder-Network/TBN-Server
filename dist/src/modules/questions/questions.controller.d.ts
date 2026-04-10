@@ -8,10 +8,12 @@ export declare class QuestionsController {
     constructor(questionsService: QuestionsService);
     createQuestion(user: JwtPayload, dto: CreateQuestionDto): Promise<{
         id: string;
+        questionNumber: number;
     }>;
     getQuestions(query: GetQuestionsQueryDto, user?: JwtPayload): Promise<{
         data: {
             id: string;
+            questionNumber: number;
             title: string;
             body: string;
             serviceSlug: string | undefined;
@@ -29,6 +31,7 @@ export declare class QuestionsController {
     }>;
     getQuestion(id: string, user?: JwtPayload): Promise<{
         id: string;
+        questionNumber: number;
         title: string;
         body: string;
         serviceSlug: string | undefined;
@@ -38,6 +41,7 @@ export declare class QuestionsController {
         createdAt: string;
         answers: {
             id: string;
+            authorId: string;
             authorName: string;
             authorAvatar: string | undefined;
             authorUsername: string | undefined;
@@ -57,4 +61,10 @@ export declare class QuestionsController {
         likesCount: number;
     }>;
     markBest(user: JwtPayload, answerId: string): Promise<void>;
+    editAnswer(user: JwtPayload, answerId: string, dto: {
+        body: string;
+    }): Promise<{
+        id: string;
+    }>;
+    deleteAnswer(user: JwtPayload, answerId: string): Promise<void>;
 }
