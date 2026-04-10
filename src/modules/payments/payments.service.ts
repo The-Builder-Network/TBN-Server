@@ -78,14 +78,20 @@ export class PaymentsService {
   // ── Handle incoming Stripe webhook ────────────────────────────────────────
 
   async handleWebhook(payload: Buffer, signature: string): Promise<void> {
-    const webhookSecret = this.configService.get<string>('STRIPE_WEBHOOK_SECRET');
+    const webhookSecret = this.configService.get<string>(
+      'STRIPE_WEBHOOK_SECRET',
+    );
     if (!webhookSecret) {
       throw new BadRequestException('Webhook secret not configured');
     }
 
     let event: ReturnType<StripeService['constructEvent']>;
     try {
-      event = this.stripeService.constructEvent(payload, signature, webhookSecret);
+      event = this.stripeService.constructEvent(
+        payload,
+        signature,
+        webhookSecret,
+      );
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Unknown error';
       this.logger.warn(`Webhook signature verification failed: ${msg}`);
@@ -93,17 +99,33 @@ export class PaymentsService {
     }
 
     if (event.type === 'checkout.session.completed') {
-      await this.handleCheckoutCompleted(event.data.object as {
-        id: string;
-        metadata?: Record<string, string> | null;
-      });
+      await this.handleCheckoutCompleted(
+        event.data.object as {
+          id: string;
+          metadata?: Record<string, string> | null;
+        },
+      );
+    } else if (event.type === 'checkout.session.expired') {
+      await this.handleCheckoutExpired(event.data.object as { id: string });
     } else if (event.type === 'charge.refunded') {
-      await this.handleChargeRefunded(event.data.object as {
-        id: string;
-        amount_refunded: number;
-        metadata?: Record<string, string> | null;
-      });
+      await this.handleChargeRefunded(
+        event.data.object as {
+          id: string;
+          amount_refunded: number;
+          metadata?: Record<string, string> | null;
+        },
+      );
     }
+  }
+
+  private async handleCheckoutExpired(session: { id: string }): Promise<void> {
+    await this.prisma.payment.updateMany({
+      where: { stripeSessionId: session.id, status: 'PENDING' },
+      data: { status: 'FAILED' },
+    });
+    this.logger.log(
+      `Checkout session expired: marked FAILED for session ${session.id}`,
+    );
   }
 
   private async handleCheckoutCompleted(session: {
@@ -307,7 +329,8 @@ export class PaymentsService {
   async getPaymentById(id: string, userId: string) {
     const payment = await this.prisma.payment.findUnique({ where: { id } });
     if (!payment) throw new NotFoundException('Payment not found');
-    if (payment.userId !== userId) throw new NotFoundException('Payment not found');
+    if (payment.userId !== userId)
+      throw new NotFoundException('Payment not found');
     return payment;
   }
 }

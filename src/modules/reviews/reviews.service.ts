@@ -9,6 +9,7 @@ import { PrismaService } from '../../prisma/prisma.service.js';
 import type { CreateReviewDto } from './dto/create-review.dto.js';
 import type { ReplyToReviewDto } from './dto/reply-to-review.dto.js';
 import type { GetReviewsQueryDto } from './dto/get-reviews-query.dto.js';
+import { handlePrismaError } from '../../common/prisma-error.helper.js';
 
 @Injectable()
 export class ReviewsService {
@@ -25,12 +26,16 @@ export class ReviewsService {
 
     // 2. Job must be COMPLETED
     if (job.status !== 'COMPLETED') {
-      throw new BadRequestException('Reviews can only be left on completed jobs');
+      throw new BadRequestException(
+        'Reviews can only be left on completed jobs',
+      );
     }
 
     // 3. Author must be the job's homeowner
     if (job.homeownerId !== authorId) {
-      throw new ForbiddenException('Only the homeowner can leave a review for this job');
+      throw new ForbiddenException(
+        'Only the homeowner can leave a review for this job',
+      );
     }
 
     // 4. Subject must be the tradesperson who was HIRED for this job
@@ -51,7 +56,9 @@ export class ReviewsService {
     const ninetyDaysMs = 90 * 24 * 60 * 60 * 1000;
     const updatedAt = job.updatedAt;
     if (Date.now() - updatedAt.getTime() > ninetyDaysMs) {
-      throw new BadRequestException('Review window has expired (90 days after completion)');
+      throw new BadRequestException(
+        'Review window has expired (90 days after completion)',
+      );
     }
 
     // 6. One review per job (unique constraint)
@@ -59,19 +66,23 @@ export class ReviewsService {
       where: { jobId_authorId: { jobId, authorId } },
     });
     if (existing) {
-      throw new ConflictException('You have already left a review for this job');
+      throw new ConflictException(
+        'You have already left a review for this job',
+      );
     }
 
     // 7. Create review
-    const review = await this.prisma.review.create({
-      data: {
-        jobId,
-        authorId,
-        subjectId: tradespersonId,
-        rating,
-        comment,
-      },
-    });
+    const review = await this.prisma.review
+      .create({
+        data: {
+          jobId,
+          authorId,
+          subjectId: tradespersonId,
+          rating,
+          comment,
+        },
+      })
+      .catch(handlePrismaError);
 
     // 8. Recalculate avgRating + reviewCount on tradesperson profile (fire-and-forget)
     void this.recalculateRating(tradespersonId);
@@ -137,7 +148,9 @@ export class ReviewsService {
 
     // One reply per review
     if (review.reply) {
-      throw new ConflictException('A reply has already been posted for this review');
+      throw new ConflictException(
+        'A reply has already been posted for this review',
+      );
     }
 
     const reply = await this.prisma.reviewReply.create({

@@ -13,9 +13,19 @@ export interface CreditPack {
 
 export const CREDIT_PACKS: CreditPack[] = [
   { credits: 25, amountPence: 2500, label: 'Starter', pricePerCredit: '£1.00' },
-  { credits: 60, amountPence: 5000, label: 'Standard', pricePerCredit: '£0.83' },
+  {
+    credits: 60,
+    amountPence: 5000,
+    label: 'Standard',
+    pricePerCredit: '£0.83',
+  },
   { credits: 150, amountPence: 10000, label: 'Pro', pricePerCredit: '£0.67' },
-  { credits: 400, amountPence: 20000, label: 'Enterprise', pricePerCredit: '£0.50' },
+  {
+    credits: 400,
+    amountPence: 20000,
+    label: 'Enterprise',
+    pricePerCredit: '£0.50',
+  },
 ];
 
 type StripeInstance = ReturnType<typeof Stripe>;
@@ -50,7 +60,9 @@ export class StripeService {
 
     const pack = CREDIT_PACKS.find((p) => p.credits === params.creditAmount);
     if (!pack) {
-      throw new Error(`No credit pack found for ${params.creditAmount} credits`);
+      throw new Error(
+        `No credit pack found for ${params.creditAmount} credits`,
+      );
     }
 
     const session = await this.stripeClient.checkout.sessions.create({
@@ -74,8 +86,8 @@ export class StripeService {
         paymentId: params.paymentId,
         credits: String(pack.credits),
       },
-      success_url: `${params.frontendUrl}/tradesperson/profile?tab=balance&session_id={CHECKOUT_SESSION_ID}`,
-      cancel_url: `${params.frontendUrl}/tradesperson/profile?tab=balance`,
+      success_url: `${params.frontendUrl}/payment/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${params.frontendUrl}/payment/cancel`,
     });
 
     return { checkoutUrl: session.url!, sessionId: session.id };
