@@ -99,18 +99,18 @@ let LeadsService = class LeadsService {
         return lead;
     }
     async expressInterest(leadId, tradespersonId, dto) {
-        const lead = await this.prisma.lead.findUnique({
-            where: { id: leadId },
-            include: { job: { select: { id: true, homeownerId: true } } },
-        });
-        if (!lead)
-            throw new common_1.NotFoundException('Lead not found');
-        if (lead.tradespersonId !== tradespersonId)
-            throw new common_1.ForbiddenException('Access denied');
-        if (lead.status !== client_1.LeadStatus.AVAILABLE)
-            throw new common_1.BadRequestException(`Lead is not available (current status: ${lead.status})`);
-        const creditCost = lead.creditCost;
         const result = await this.prisma.$transaction(async (tx) => {
+            const lead = await tx.lead.findUnique({
+                where: { id: leadId },
+                include: { job: { select: { id: true, homeownerId: true } } },
+            });
+            if (!lead)
+                throw new common_1.NotFoundException('Lead not found');
+            if (lead.tradespersonId !== tradespersonId)
+                throw new common_1.ForbiddenException('Access denied');
+            if (lead.status !== client_1.LeadStatus.AVAILABLE)
+                throw new common_1.BadRequestException(`Lead is not available (current status: ${lead.status})`);
+            const creditCost = lead.creditCost;
             const credit = await tx.leadCredit.findUnique({
                 where: { userId: tradespersonId },
             });
@@ -188,7 +188,7 @@ let LeadsService = class LeadsService {
                 quoteId: quote.id,
                 conversationId: conversation.id,
             };
-        });
+        }, { isolationLevel: 'Serializable' });
         this.paymentsService.triggerAutoTopupIfNeeded(tradespersonId).catch(() => {
         });
         return result;

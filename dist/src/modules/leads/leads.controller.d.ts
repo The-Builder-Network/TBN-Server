@@ -15,9 +15,9 @@ export declare class LeadsController {
                 id: string;
                 createdAt: Date;
                 postcode: string;
-                placeName: string | null;
                 tradeSlug: string | null;
                 title: string;
+                placeName: string | null;
             };
             id: string;
             createdAt: Date;
@@ -52,12 +52,13 @@ export declare class LeadsController {
             postcode: string;
             latitude: number | null;
             longitude: number | null;
-            placeName: string | null;
             tradeSlug: string | null;
             title: string;
-            description: string;
-            answersJson: import("@prisma/client/runtime/client").JsonValue | null;
             status: import("@prisma/client").$Enums.JobStatus;
+            jobNumber: number;
+            description: string;
+            placeName: string | null;
+            answersJson: import("@prisma/client/runtime/client").JsonValue | null;
             homeownerId: string;
         };
     } & {
