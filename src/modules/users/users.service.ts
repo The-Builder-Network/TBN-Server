@@ -292,6 +292,15 @@ export class UsersService {
   // ── POST /users/me/avatar ─────────────────────────────────────────────────
 
   async uploadAvatar(userId: string, file: Express.Multer.File) {
+    // Delete old avatar from S3 if present
+    const existing = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarUrl: true },
+    });
+    if (existing?.avatarUrl) {
+      await this.uploads.deleteFile(existing.avatarUrl);
+    }
+
     const avatarUrl = await this.uploads.uploadFile(
       file.buffer,
       file.originalname,
@@ -303,6 +312,24 @@ export class UsersService {
       data: { avatarUrl },
     });
     return { avatarUrl };
+  }
+
+  // ── DELETE /users/me/avatar ───────────────────────────────────────────────
+
+  async deleteAvatar(userId: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { avatarUrl: true },
+    });
+
+    if (user?.avatarUrl) {
+      await this.uploads.deleteFile(user.avatarUrl);
+    }
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { avatarUrl: null },
+    });
   }
 
   // ── POST /users/me/id-document ────────────────────────────────────────────
@@ -468,7 +495,7 @@ export class UsersService {
       throw new ForbiddenException('Portfolio item not found');
     }
 
-    // Delete from R2
+    // Delete from S3
     await this.uploads.deleteFile(item.imageUrl);
     await this.prisma.portfolioItem.delete({ where: { id: itemId } });
   }
