@@ -270,12 +270,32 @@ let UsersService = class UsersService {
         return user;
     }
     async uploadAvatar(userId, file) {
+        const existing = await this.prisma.user.findUnique({
+            where: { id: userId },
+            select: { avatarUrl: true },
+        });
+        if (existing?.avatarUrl) {
+            await this.uploads.deleteFile(existing.avatarUrl);
+        }
         const avatarUrl = await this.uploads.uploadFile(file.buffer, file.originalname, file.mimetype, 'avatars');
         await this.prisma.user.update({
             where: { id: userId },
             data: { avatarUrl },
         });
         return { avatarUrl };
+    }
+    async deleteAvatar(userId) {
+        const user = await this.prisma.user.findUnique({
+            where: { id: userId },
+            select: { avatarUrl: true },
+        });
+        if (user?.avatarUrl) {
+            await this.uploads.deleteFile(user.avatarUrl);
+        }
+        await this.prisma.user.update({
+            where: { id: userId },
+            data: { avatarUrl: null },
+        });
     }
     async uploadIdDocument(userId, file) {
         const profile = await this.prisma.tradespersonProfile.findUnique({

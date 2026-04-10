@@ -47,6 +47,9 @@ let UsersController = class UsersController {
     async uploadAvatar(user, file) {
         return this.usersService.uploadAvatar(user.sub, file);
     }
+    async deleteAvatar(user) {
+        return this.usersService.deleteAvatar(user.sub);
+    }
     async uploadIdDocument(user, file) {
         return this.usersService.uploadIdDocument(user.sub, file);
     }
@@ -123,12 +126,21 @@ __decorate([
     })),
     __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
     __param(1, (0, common_1.UploadedFile)(new common_1.ParseFilePipeBuilder()
-        .addFileTypeValidator({ fileType: /^image\/(jpeg|png)$/ })
+        .addFileTypeValidator({ fileType: /^image\/(jpeg|png|webp)$/ })
         .build({ fileIsRequired: true }))),
     __metadata("design:type", Function),
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], UsersController.prototype, "uploadAvatar", null);
+__decorate([
+    (0, common_1.Delete)('me/avatar'),
+    (0, common_1.UseGuards)(jwt_auth_guard_js_1.JwtAuthGuard),
+    (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "deleteAvatar", null);
 __decorate([
     (0, common_1.Post)('me/id-document'),
     (0, common_1.UseGuards)(jwt_auth_guard_js_1.JwtAuthGuard, roles_guard_js_1.RolesGuard),

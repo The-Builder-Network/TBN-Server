@@ -148,17 +148,18 @@ export declare class UsersService {
     }>;
     updateUser(userId: string, dto: UpdateUserDto): Promise<{
         name: string;
+        id: string;
+        createdAt: Date;
         email: string;
         role: import("@prisma/client").$Enums.UserRole;
-        id: string;
         phone: string | null;
         avatarUrl: string | null;
         emailVerified: boolean;
-        createdAt: Date;
     }>;
     uploadAvatar(userId: string, file: Express.Multer.File): Promise<{
         avatarUrl: string;
     }>;
+    deleteAvatar(userId: string): Promise<void>;
     uploadIdDocument(userId: string, file: Express.Multer.File): Promise<{
         message: string;
     }>;
