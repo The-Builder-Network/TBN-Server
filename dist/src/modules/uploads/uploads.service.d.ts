@@ -4,8 +4,8 @@ export declare class UploadsService {
     private readonly logger;
     private readonly s3;
     private readonly bucket;
-    private readonly publicUrl;
+    private readonly cdnUrl;
     constructor(config: ConfigService);
     uploadFile(fileBuffer: Buffer, originalName: string, mimeType: string, folder?: string): Promise<string>;
-    deleteFile(publicFileUrl: string): Promise<void>;
+    deleteFile(fileUrl: string): Promise<void>;
 }

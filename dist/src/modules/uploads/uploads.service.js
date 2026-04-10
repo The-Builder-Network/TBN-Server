@@ -49,6 +49,7 @@ const config_1 = require("@nestjs/config");
 const client_s3_1 = require("@aws-sdk/client-s3");
 const crypto_1 = require("crypto");
 const path = __importStar(require("path"));
+const url_1 = require("url");
 const ALLOWED_UPLOAD_TYPES = [
     { mime: 'image/jpeg', magic: Buffer.from([0xff, 0xd8, 0xff]) },
     { mime: 'image/png', magic: Buffer.from([0x89, 0x50, 0x4e, 0x47]) },
@@ -81,22 +82,18 @@ let UploadsService = UploadsService_1 = class UploadsService {
     logger = new common_1.Logger(UploadsService_1.name);
     s3;
     bucket;
-    publicUrl;
+    cdnUrl;
     constructor(config) {
         this.config = config;
-        const accountId = config.get('R2_ACCOUNT_ID') ?? '';
-        const endpoint = config.get('R2_ENDPOINT') ??
-            `https://${accountId}.r2.cloudflarestorage.com`;
         this.s3 = new client_s3_1.S3Client({
-            region: 'auto',
-            endpoint,
+            region: config.get('AWS_REGION') ?? 'us-east-1',
             credentials: {
-                accessKeyId: config.get('R2_ACCESS_KEY_ID') ?? '',
-                secretAccessKey: config.get('R2_SECRET_ACCESS_KEY') ?? '',
+                accessKeyId: config.get('AWS_ACCESS_KEY_ID') ?? '',
+                secretAccessKey: config.get('AWS_SECRET_ACCESS_KEY') ?? '',
             },
         });
-        this.bucket = config.get('R2_BUCKET_NAME') ?? 'tbn-uploads';
-        this.publicUrl = config.get('R2_PUBLIC_URL') ?? '';
+        this.bucket = config.get('AWS_S3_BUCKET') ?? 'tbn-uploads';
+        this.cdnUrl = (config.get('CLOUDFRONT_URL') ?? '').replace(/\/$/, '');
     }
     async uploadFile(fileBuffer, originalName, mimeType, folder = 'uploads') {
         validateMagicBytes(fileBuffer, mimeType);
@@ -113,10 +110,18 @@ let UploadsService = UploadsService_1 = class UploadsService {
         catch (err) {
             throw new common_1.InternalServerErrorException(`Failed to upload file: ${err.message}`);
         }
-        return `${this.publicUrl}/${key}`;
+        return `${this.cdnUrl}/${key}`;
     }
-    async deleteFile(publicFileUrl) {
-        const key = publicFileUrl.replace(`${this.publicUrl}/`, '');
+    async deleteFile(fileUrl) {
+        let key;
+        try {
+            key = new url_1.URL(fileUrl).pathname.replace(/^\//, '');
+        }
+        catch {
+            key = fileUrl.replace(`${this.cdnUrl}/`, '');
+        }
+        if (!key)
+            return;
         try {
             await this.s3.send(new client_s3_1.DeleteObjectCommand({
                 Bucket: this.bucket,
@@ -124,7 +129,7 @@ let UploadsService = UploadsService_1 = class UploadsService {
             }));
         }
         catch (err) {
-            this.logger.error('R2 delete failed:', err.message);
+            this.logger.error('S3 delete failed:', err.message);
         }
     }
 };
