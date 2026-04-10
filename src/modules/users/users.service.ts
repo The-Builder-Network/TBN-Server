@@ -13,6 +13,7 @@ import type { AddQualificationDto } from './dto/add-qualification.dto.js';
 import type { CreateMessageTemplateDto } from './dto/create-message-template.dto.js';
 import type { UpdateMessageTemplateDto } from './dto/update-message-template.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
+import { handlePrismaError } from '../../common/prisma-error.helper.js';
 
 @Injectable()
 export class UsersService {
@@ -61,7 +62,13 @@ export class UsersService {
       where: { subjectId: profile.userId },
       _count: { rating: true },
     });
-    const ratingBreakdown: Record<string, number> = { '1': 0, '2': 0, '3': 0, '4': 0, '5': 0 };
+    const ratingBreakdown: Record<string, number> = {
+      '1': 0,
+      '2': 0,
+      '3': 0,
+      '4': 0,
+      '5': 0,
+    };
     for (const r of allRatings) {
       ratingBreakdown[String(r.rating)] = r._count.rating;
     }
@@ -192,25 +199,27 @@ export class UsersService {
       lng = geo.longitude;
     }
 
-    const updated = await this.prisma.tradespersonProfile.update({
-      where: { userId },
-      data: {
-        companyName: dto.companyName,
-        bio: dto.bio,
-        trade: dto.trade,
-        postcode: dto.postcode?.toUpperCase().trim(),
-        workRadiusMiles: dto.workRadiusMiles,
-        guarantee: dto.guarantee,
-        responseTime: dto.responseTime,
-        ...(lat !== undefined ? { latitude: lat, longitude: lng } : {}),
-      },
-      include: {
-        services: true,
-        qualifications: true,
-        portfolioItems: { orderBy: { sortOrder: 'asc' } },
-        messageTemplates: { orderBy: { createdAt: 'asc' } },
-      },
-    });
+    const updated = await this.prisma.tradespersonProfile
+      .update({
+        where: { userId },
+        data: {
+          companyName: dto.companyName,
+          bio: dto.bio,
+          trade: dto.trade,
+          postcode: dto.postcode?.toUpperCase().trim(),
+          workRadiusMiles: dto.workRadiusMiles,
+          guarantee: dto.guarantee,
+          responseTime: dto.responseTime,
+          ...(lat !== undefined ? { latitude: lat, longitude: lng } : {}),
+        },
+        include: {
+          services: true,
+          qualifications: true,
+          portfolioItems: { orderBy: { sortOrder: 'asc' } },
+          messageTemplates: { orderBy: { createdAt: 'asc' } },
+        },
+      })
+      .catch(handlePrismaError);
 
     return {
       id: updated.id,
@@ -338,7 +347,11 @@ export class UsersService {
           tradeSlug: dto.tradeSlug,
         },
       });
-      return { id: service.id, serviceSlug: service.serviceSlug, tradeSlug: service.tradeSlug };
+      return {
+        id: service.id,
+        serviceSlug: service.serviceSlug,
+        tradeSlug: service.tradeSlug,
+      };
     } catch {
       throw new ConflictException('Service already added');
     }
@@ -377,7 +390,12 @@ export class UsersService {
         year: dto.year,
       },
     });
-    return { id: qual.id, name: qual.name, verified: qual.verified, year: qual.year };
+    return {
+      id: qual.id,
+      name: qual.name,
+      verified: qual.verified,
+      year: qual.year,
+    };
   }
 
   // ── DELETE /users/me/qualifications/:id ───────────────────────────────────
@@ -427,7 +445,12 @@ export class UsersService {
       },
     });
 
-    return { id: item.id, imageUrl: item.imageUrl, title: item.title, category: item.category };
+    return {
+      id: item.id,
+      imageUrl: item.imageUrl,
+      title: item.title,
+      category: item.category,
+    };
   }
 
   // ── DELETE /users/me/portfolio/:id ────────────────────────────────────────
@@ -523,7 +546,8 @@ export class UsersService {
   }): string[] {
     const badges: string[] = [];
     if (profile.verificationStatus === 'APPROVED') badges.push('Verified');
-    if (profile.avgRating >= 4.8 && profile.reviewCount >= 10) badges.push('Top Rated');
+    if (profile.avgRating >= 4.8 && profile.reviewCount >= 10)
+      badges.push('Top Rated');
     if (profile.completedJobs >= 50) badges.push('50+ Jobs');
     else if (profile.completedJobs >= 10) badges.push('10+ Jobs');
     if (

@@ -1,4 +1,11 @@
-import { IsString, IsInt, IsOptional, MaxLength, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsInt,
+  IsOptional,
+  MaxLength,
+  Min,
+  Max,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class AddQualificationDto {

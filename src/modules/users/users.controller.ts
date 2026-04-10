@@ -192,7 +192,12 @@ export class UsersController {
     @Body('title') title?: string,
     @Body('category') category?: string,
   ) {
-    return this.usersService.uploadPortfolioItem(user.sub, file, title, category);
+    return this.usersService.uploadPortfolioItem(
+      user.sub,
+      file,
+      title,
+      category,
+    );
   }
 
   @Delete('me/portfolio/:id')

@@ -1,5 +1,14 @@
-import { IsString, IsInt, IsBoolean, IsOptional, MaxLength, Min, Max } from 'class-validator';
+import {
+  IsString,
+  IsInt,
+  IsBoolean,
+  IsOptional,
+  MaxLength,
+  Min,
+  Max,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
+import { stripHtml } from '../../../common/sanitize.helper.js';
 
 export class UpdateProfileDto {
   @IsOptional()
@@ -8,6 +17,7 @@ export class UpdateProfileDto {
   companyName?: string;
 
   @IsOptional()
+  @Transform(({ value }: { value: unknown }) => stripHtml(value))
   @IsString()
   @MaxLength(2000)
   bio?: string;
