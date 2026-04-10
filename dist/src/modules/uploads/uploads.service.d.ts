@@ -1,6 +1,7 @@
 import { ConfigService } from '@nestjs/config';
 export declare class UploadsService {
     private readonly config;
+    private readonly logger;
     private readonly s3;
     private readonly bucket;
     private readonly publicUrl;

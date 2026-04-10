@@ -41,6 +41,7 @@ var __importStar = (this && this.__importStar) || (function () {
 var __metadata = (this && this.__metadata) || function (k, v) {
     if (typeof Reflect === "object" && typeof Reflect.metadata === "function") return Reflect.metadata(k, v);
 };
+var UploadsService_1;
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.UploadsService = void 0;
 const common_1 = require("@nestjs/common");
@@ -48,8 +49,36 @@ const config_1 = require("@nestjs/config");
 const client_s3_1 = require("@aws-sdk/client-s3");
 const crypto_1 = require("crypto");
 const path = __importStar(require("path"));
-let UploadsService = class UploadsService {
+const ALLOWED_UPLOAD_TYPES = [
+    { mime: 'image/jpeg', magic: Buffer.from([0xff, 0xd8, 0xff]) },
+    { mime: 'image/png', magic: Buffer.from([0x89, 0x50, 0x4e, 0x47]) },
+    { mime: 'image/webp', magic: Buffer.from([0x52, 0x49, 0x46, 0x46]) },
+    { mime: 'application/pdf', magic: Buffer.from([0x25, 0x50, 0x44, 0x46]) },
+];
+function validateMagicBytes(buffer, declaredMime) {
+    const entry = ALLOWED_UPLOAD_TYPES.find((t) => t.mime === declaredMime);
+    if (!entry) {
+        throw new common_1.BadRequestException(`File type '${declaredMime}' is not permitted`);
+    }
+    const magic = entry.magic;
+    if (buffer.length < magic.length) {
+        throw new common_1.BadRequestException('File is too small to be valid');
+    }
+    for (let i = 0; i < magic.length; i++) {
+        if (buffer[i] !== magic[i]) {
+            throw new common_1.BadRequestException('File content does not match its declared type');
+        }
+    }
+    if (declaredMime === 'image/webp') {
+        if (buffer.length < 12 ||
+            buffer.slice(8, 12).toString('ascii') !== 'WEBP') {
+            throw new common_1.BadRequestException('File content does not match its declared type');
+        }
+    }
+}
+let UploadsService = UploadsService_1 = class UploadsService {
     config;
+    logger = new common_1.Logger(UploadsService_1.name);
     s3;
     bucket;
     publicUrl;
@@ -70,6 +99,7 @@ let UploadsService = class UploadsService {
         this.publicUrl = config.get('R2_PUBLIC_URL') ?? '';
     }
     async uploadFile(fileBuffer, originalName, mimeType, folder = 'uploads') {
+        validateMagicBytes(fileBuffer, mimeType);
         const ext = path.extname(originalName).toLowerCase();
         const key = `${folder}/${(0, crypto_1.randomUUID)()}${ext}`;
         try {
@@ -94,12 +124,12 @@ let UploadsService = class UploadsService {
             }));
         }
         catch (err) {
-            console.error('R2 delete failed:', err.message);
+            this.logger.error('R2 delete failed:', err.message);
         }
     }
 };
 exports.UploadsService = UploadsService;
-exports.UploadsService = UploadsService = __decorate([
+exports.UploadsService = UploadsService = UploadsService_1 = __decorate([
     (0, common_1.Injectable)(),
     __metadata("design:paramtypes", [config_1.ConfigService])
 ], UploadsService);

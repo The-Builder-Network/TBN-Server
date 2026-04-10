@@ -12,6 +12,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.UpdateProfileDto = void 0;
 const class_validator_1 = require("class-validator");
 const class_transformer_1 = require("class-transformer");
+const sanitize_helper_js_1 = require("../../../common/sanitize.helper.js");
 class UpdateProfileDto {
     companyName;
     bio;
@@ -30,6 +31,7 @@ __decorate([
 ], UpdateProfileDto.prototype, "companyName", void 0);
 __decorate([
     (0, class_validator_1.IsOptional)(),
+    (0, class_transformer_1.Transform)(({ value }) => (0, sanitize_helper_js_1.stripHtml)(value)),
     (0, class_validator_1.IsString)(),
     (0, class_validator_1.MaxLength)(2000),
     __metadata("design:type", String)
