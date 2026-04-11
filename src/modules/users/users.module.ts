@@ -4,9 +4,10 @@ import { UsersService } from './users.service.js';
 import { PrismaModule } from '../../prisma/prisma.module.js';
 import { UploadsModule } from '../uploads/uploads.module.js';
 import { PostcodeService } from '../jobs/postcode.service.js';
+import { JobsModule } from '../jobs/jobs.module.js';
 
 @Module({
-  imports: [PrismaModule, UploadsModule],
+  imports: [PrismaModule, UploadsModule, JobsModule],
   controllers: [UsersController],
   providers: [UsersService, PostcodeService],
   exports: [UsersService],

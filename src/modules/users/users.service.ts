@@ -14,6 +14,7 @@ import type { CreateMessageTemplateDto } from './dto/create-message-template.dto
 import type { UpdateMessageTemplateDto } from './dto/update-message-template.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
 import { handlePrismaError } from '../../common/prisma-error.helper.js';
+import { JobsService } from '../jobs/jobs.service.js';
 
 @Injectable()
 export class UsersService {
@@ -21,6 +22,7 @@ export class UsersService {
     private readonly prisma: PrismaService,
     private readonly uploads: UploadsService,
     private readonly postcode: PostcodeService,
+    private readonly jobs: JobsService,
   ) {}
 
   // ── GET /users/:username — public profile ─────────────────────────────────
@@ -126,15 +128,22 @@ export class UsersService {
   // ── GET /users/me/profile — own tradesperson profile ──────────────────────
 
   async getMyProfile(userId: string) {
-    const profile = await this.prisma.tradespersonProfile.findUnique({
-      where: { userId },
-      include: {
-        services: true,
-        qualifications: true,
-        portfolioItems: { orderBy: { sortOrder: 'asc' } },
-        messageTemplates: { orderBy: { createdAt: 'asc' } },
-      },
-    });
+    const [profile, user] = await Promise.all([
+      this.prisma.tradespersonProfile.findUnique({
+        where: { userId },
+        include: {
+          services: true,
+          qualifications: true,
+          portfolioItems: { orderBy: { sortOrder: 'asc' } },
+          messageTemplates: { orderBy: { createdAt: 'asc' } },
+          documents: { orderBy: { createdAt: 'asc' } },
+        },
+      }),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { phone: true, email: true },
+      }),
+    ]);
 
     if (!profile) throw new NotFoundException('Tradesperson profile not found');
 
@@ -151,6 +160,8 @@ export class UsersService {
       avgRating: profile.avgRating,
       reviewCount: profile.reviewCount,
       completedJobs: profile.completedJobs,
+      phone: user?.phone ?? null,
+      email: user?.email ?? null,
       services: profile.services.map((s) => ({
         id: s.id,
         serviceSlug: s.serviceSlug,
@@ -179,6 +190,13 @@ export class UsersService {
         id: t.id,
         name: t.name,
         body: t.body,
+      })),
+      documents: profile.documents.map((d) => ({
+        id: d.id,
+        fileUrl: d.fileUrl,
+        fileName: d.fileName,
+        mimeType: d.mimeType,
+        createdAt: d.createdAt,
       })),
     };
   }
@@ -218,11 +236,12 @@ export class UsersService {
           qualifications: true,
           portfolioItems: { orderBy: { sortOrder: 'asc' } },
           messageTemplates: { orderBy: { createdAt: 'asc' } },
+          documents: { orderBy: { createdAt: 'asc' } },
         },
       })
       .catch(handlePrismaError);
 
-    return {
+    const result = {
       id: updated.id,
       username: updated.username,
       companyName: updated.companyName,
@@ -264,7 +283,27 @@ export class UsersService {
         name: t.name,
         body: t.body,
       })),
+      documents: updated.documents.map((d) => ({
+        id: d.id,
+        fileUrl: d.fileUrl,
+        fileName: d.fileName,
+        mimeType: d.mimeType,
+        createdAt: d.createdAt,
+      })),
     };
+
+    // If postcode or work radius changed, backfill leads for existing ACTIVE jobs
+    if (dto.postcode || dto.workRadiusMiles !== undefined) {
+      this.jobs.backfillLeadsForTradesperson(userId).catch(() => {});
+    }
+
+    return result;
+  }
+
+  // ── POST /users/me/leads/refresh ──────────────────────────────────────────
+
+  async refreshLeads(userId: string): Promise<void> {
+    await this.jobs.backfillLeadsForTradesperson(userId);
   }
 
   // ── PATCH /users/me — update name/phone ───────────────────────────────────
@@ -375,6 +414,10 @@ export class UsersService {
           tradeSlug: dto.tradeSlug,
         },
       });
+
+      // Backfill leads for existing ACTIVE jobs matching this new service
+      this.jobs.backfillLeadsForTradesperson(userId).catch(() => {});
+
       return {
         id: service.id,
         serviceSlug: service.serviceSlug,
@@ -585,5 +628,57 @@ export class UsersService {
       badges.push('Responds Fast');
     }
     return badges;
+  }
+
+  // ── POST /users/me/documents ──────────────────────────────────────────────
+
+  async uploadDocument(userId: string, file: Express.Multer.File) {
+    const profile = await this.prisma.tradespersonProfile.findUnique({
+      where: { userId },
+    });
+    if (!profile) throw new NotFoundException('Tradesperson profile not found');
+
+    const fileUrl = await this.uploads.uploadFile(
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+      'profile-documents',
+    );
+
+    const doc = await this.prisma.profileDocument.create({
+      data: {
+        tradespersonProfileId: profile.id,
+        fileUrl,
+        fileName: file.originalname,
+        mimeType: file.mimetype,
+      },
+    });
+
+    return {
+      id: doc.id,
+      fileUrl: doc.fileUrl,
+      fileName: doc.fileName,
+      mimeType: doc.mimeType,
+      createdAt: doc.createdAt,
+    };
+  }
+
+  // ── DELETE /users/me/documents/:id ───────────────────────────────────────
+
+  async deleteDocument(userId: string, docId: string) {
+    const profile = await this.prisma.tradespersonProfile.findUnique({
+      where: { userId },
+    });
+    if (!profile) throw new NotFoundException('Tradesperson profile not found');
+
+    const doc = await this.prisma.profileDocument.findUnique({
+      where: { id: docId },
+    });
+    if (!doc || doc.tradespersonProfileId !== profile.id) {
+      throw new ForbiddenException('Document not found');
+    }
+
+    await this.uploads.deleteFile(doc.fileUrl);
+    await this.prisma.profileDocument.delete({ where: { id: docId } });
   }
 }
