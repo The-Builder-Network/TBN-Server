@@ -10,6 +10,8 @@ export declare class LeadsController {
     }>;
     getLeads(user: JwtPayload, query: GetLeadsQueryDto): Promise<{
         data: {
+            id: string;
+            createdAt: Date;
             job: {
                 serviceSlug: string;
                 id: string;
@@ -19,8 +21,6 @@ export declare class LeadsController {
                 tradeSlug: string | null;
                 title: string;
             };
-            id: string;
-            createdAt: Date;
             status: import("@prisma/client").$Enums.LeadStatus;
             creditCost: number;
             distanceMiles: number | null;
