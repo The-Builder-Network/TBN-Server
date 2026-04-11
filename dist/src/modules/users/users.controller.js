@@ -53,6 +53,9 @@ let UsersController = class UsersController {
     async uploadIdDocument(user, file) {
         return this.usersService.uploadIdDocument(user.sub, file);
     }
+    async refreshLeads(user) {
+        await this.usersService.refreshLeads(user.sub);
+    }
     async addService(user, dto) {
         return this.usersService.addService(user.sub, dto);
     }
@@ -79,6 +82,12 @@ let UsersController = class UsersController {
     }
     async deleteMessageTemplate(user, id) {
         return this.usersService.deleteMessageTemplate(user.sub, id);
+    }
+    async uploadDocument(user, file) {
+        return this.usersService.uploadDocument(user.sub, file);
+    }
+    async deleteDocument(user, id) {
+        return this.usersService.deleteDocument(user.sub, id);
     }
 };
 exports.UsersController = UsersController;
@@ -159,6 +168,16 @@ __decorate([
     __metadata("design:paramtypes", [Object, Object]),
     __metadata("design:returntype", Promise)
 ], UsersController.prototype, "uploadIdDocument", null);
+__decorate([
+    (0, common_1.Post)('me/leads/refresh'),
+    (0, common_1.UseGuards)(jwt_auth_guard_js_1.JwtAuthGuard, roles_guard_js_1.RolesGuard),
+    (0, roles_decorator_js_1.Roles)('TRADESPERSON'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "refreshLeads", null);
 __decorate([
     (0, common_1.Post)('me/services'),
     (0, common_1.UseGuards)(jwt_auth_guard_js_1.JwtAuthGuard, roles_guard_js_1.RolesGuard),
@@ -266,6 +285,36 @@ __decorate([
     __metadata("design:paramtypes", [Object, String]),
     __metadata("design:returntype", Promise)
 ], UsersController.prototype, "deleteMessageTemplate", null);
+__decorate([
+    (0, common_1.Post)('me/documents'),
+    (0, common_1.UseGuards)(jwt_auth_guard_js_1.JwtAuthGuard, roles_guard_js_1.RolesGuard),
+    (0, roles_decorator_js_1.Roles)('TRADESPERSON'),
+    (0, common_1.UseInterceptors)((0, platform_express_1.FileInterceptor)('document', {
+        storage: (0, multer_1.memoryStorage)(),
+        limits: { fileSize: 20 * 1024 * 1024 },
+    })),
+    (0, common_1.HttpCode)(common_1.HttpStatus.CREATED),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
+    __param(1, (0, common_1.UploadedFile)(new common_1.ParseFilePipeBuilder()
+        .addFileTypeValidator({
+        fileType: /^(image\/(jpeg|png|webp)|application\/pdf)$/,
+    })
+        .build({ fileIsRequired: true }))),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, Object]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "uploadDocument", null);
+__decorate([
+    (0, common_1.Delete)('me/documents/:id'),
+    (0, common_1.UseGuards)(jwt_auth_guard_js_1.JwtAuthGuard, roles_guard_js_1.RolesGuard),
+    (0, roles_decorator_js_1.Roles)('TRADESPERSON'),
+    (0, common_1.HttpCode)(common_1.HttpStatus.NO_CONTENT),
+    __param(0, (0, current_user_decorator_js_1.CurrentUser)()),
+    __param(1, (0, common_1.Param)('id')),
+    __metadata("design:type", Function),
+    __metadata("design:paramtypes", [Object, String]),
+    __metadata("design:returntype", Promise)
+], UsersController.prototype, "deleteDocument", null);
 exports.UsersController = UsersController = __decorate([
     (0, common_1.Controller)('api/v1/users'),
     __metadata("design:paramtypes", [users_service_js_1.UsersService])

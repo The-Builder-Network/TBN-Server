@@ -71,6 +71,8 @@ export declare class UsersController {
         avgRating: number;
         reviewCount: number;
         completedJobs: number;
+        phone: string | null;
+        email: string | null;
         services: {
             id: string;
             serviceSlug: string;
@@ -99,6 +101,13 @@ export declare class UsersController {
             id: string;
             name: string;
             body: string;
+        }[];
+        documents: {
+            id: string;
+            fileUrl: string;
+            fileName: string;
+            mimeType: string;
+            createdAt: Date;
         }[];
     }>;
     updateMyProfile(user: JwtPayload, dto: UpdateProfileDto): Promise<{
@@ -143,16 +152,23 @@ export declare class UsersController {
             name: string;
             body: string;
         }[];
+        documents: {
+            id: string;
+            fileUrl: string;
+            fileName: string;
+            mimeType: string;
+            createdAt: Date;
+        }[];
     }>;
     updateUser(user: JwtPayload, dto: UpdateUserDto): Promise<{
-        name: string;
         id: string;
+        createdAt: Date;
         email: string;
         role: import("@prisma/client").$Enums.UserRole;
+        name: string;
         phone: string | null;
         avatarUrl: string | null;
         emailVerified: boolean;
-        createdAt: Date;
     }>;
     uploadAvatar(user: JwtPayload, file: Express.Multer.File): Promise<{
         avatarUrl: string;
@@ -161,6 +177,7 @@ export declare class UsersController {
     uploadIdDocument(user: JwtPayload, file: Express.Multer.File): Promise<{
         message: string;
     }>;
+    refreshLeads(user: JwtPayload): Promise<void>;
     addService(user: JwtPayload, dto: AddServiceDto): Promise<{
         id: string;
         serviceSlug: string;
@@ -192,4 +209,12 @@ export declare class UsersController {
         body: string;
     }>;
     deleteMessageTemplate(user: JwtPayload, id: string): Promise<void>;
+    uploadDocument(user: JwtPayload, file: Express.Multer.File): Promise<{
+        id: string;
+        fileUrl: string;
+        fileName: string;
+        mimeType: string;
+        createdAt: Date;
+    }>;
+    deleteDocument(user: JwtPayload, id: string): Promise<void>;
 }
