@@ -83,6 +83,7 @@ export class UsersService {
       postcode: profile.postcode,
       memberSince: profile.user.createdAt,
       verified: profile.verificationStatus === 'APPROVED',
+      guarantee: profile.guarantee,
       avgRating: profile.avgRating,
       reviewCount: profile.reviewCount,
       completedJobs: profile.completedJobs,

@@ -10,6 +10,7 @@ export class SearchService {
     const {
       query: searchTerm,
       serviceSlug,
+      guarantee,
       sort = 'rating',
       order = 'desc',
       page = 1,
@@ -32,6 +33,10 @@ export class SearchService {
 
     if (serviceSlug) {
       where.services = { some: { serviceSlug } };
+    }
+
+    if (guarantee !== undefined) {
+      where.guarantee = guarantee;
     }
 
     const sortMap: Record<string, string> = {
@@ -66,6 +71,8 @@ export class SearchService {
       avgRating: p.avgRating,
       reviewCount: p.reviewCount,
       completedJobs: p.completedJobs,
+      verified: p.verificationStatus === 'APPROVED',
+      guarantee: p.guarantee,
       services: p.services.map((s) => s.serviceSlug),
     }));
 
