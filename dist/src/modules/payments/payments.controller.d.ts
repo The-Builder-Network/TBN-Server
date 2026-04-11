@@ -23,9 +23,9 @@ export declare class PaymentsController {
     }>;
     getHistory(user: JwtPayload, page?: string, perPage?: string): Promise<{
         data: {
-            type: import("@prisma/client").$Enums.PaymentType;
             id: string;
             createdAt: Date;
+            type: import("@prisma/client").$Enums.PaymentType;
             description: string | null;
             status: import("@prisma/client").$Enums.PaymentStatus;
             amountPence: number;

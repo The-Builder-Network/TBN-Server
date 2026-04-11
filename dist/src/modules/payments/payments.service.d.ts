@@ -25,9 +25,9 @@ export declare class PaymentsService {
     private handleChargeRefunded;
     getPaymentHistory(userId: string, page?: number, perPage?: number): Promise<{
         data: {
-            type: import("@prisma/client").$Enums.PaymentType;
             id: string;
             createdAt: Date;
+            type: import("@prisma/client").$Enums.PaymentType;
             description: string | null;
             status: import("@prisma/client").$Enums.PaymentStatus;
             amountPence: number;
@@ -49,10 +49,10 @@ export declare class PaymentsService {
     }>;
     triggerAutoTopupIfNeeded(userId: string): Promise<void>;
     getPaymentById(id: string, userId: string): Promise<{
-        type: import("@prisma/client").$Enums.PaymentType;
         id: string;
         createdAt: Date;
         userId: string;
+        type: import("@prisma/client").$Enums.PaymentType;
         description: string | null;
         status: import("@prisma/client").$Enums.PaymentStatus;
         amountPence: number;
