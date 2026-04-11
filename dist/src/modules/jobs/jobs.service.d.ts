@@ -16,6 +16,7 @@ export declare class JobsService {
         matchedCount: number;
         createdAt: Date;
     }>;
+    backfillLeadsForTradesperson(tradespersonId: string): Promise<void>;
     private matchTradespersons;
     getJobs(homeownerId: string, query: GetJobsQueryDto): Promise<{
         data: {

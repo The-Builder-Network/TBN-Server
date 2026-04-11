@@ -73,11 +73,64 @@ let JobsService = class JobsService {
             createdAt: job.createdAt,
         };
     }
+    async backfillLeadsForTradesperson(tradespersonId) {
+        const profile = await this.prisma.tradespersonProfile.findUnique({
+            where: { userId: tradespersonId },
+            select: {
+                latitude: true,
+                longitude: true,
+                workRadiusMiles: true,
+                verificationStatus: true,
+                services: { select: { serviceSlug: true } },
+            },
+        });
+        if (!profile ||
+            !profile.latitude ||
+            !profile.longitude ||
+            profile.verificationStatus === 'REJECTED' ||
+            profile.services.length === 0) {
+            return;
+        }
+        const serviceSlugs = profile.services.map((s) => s.serviceSlug);
+        const now = new Date();
+        const activeJobs = await this.prisma.job.findMany({
+            where: {
+                status: 'ACTIVE',
+                serviceSlug: { in: serviceSlugs },
+                latitude: { not: null },
+                longitude: { not: null },
+            },
+            select: {
+                id: true,
+                serviceSlug: true,
+                latitude: true,
+                longitude: true,
+            },
+        });
+        const leads = [];
+        for (const job of activeJobs) {
+            if (job.latitude === null || job.longitude === null)
+                continue;
+            const dist = haversineDistance(job.latitude, job.longitude, profile.latitude, profile.longitude);
+            if (dist <= profile.workRadiusMiles) {
+                leads.push({
+                    jobId: job.id,
+                    tradespersonId,
+                    creditCost: (0, credit_cost_helper_js_1.calculateCreditCost)(job.serviceSlug ?? ''),
+                    distanceMiles: dist,
+                    expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+                });
+            }
+        }
+        if (leads.length > 0) {
+            await this.prisma.lead.createMany({ data: leads, skipDuplicates: true });
+        }
+    }
     async matchTradespersons(jobId, serviceSlug, geo) {
         const creditCost = (0, credit_cost_helper_js_1.calculateCreditCost)(serviceSlug);
         const candidates = await this.prisma.tradespersonProfile.findMany({
             where: {
-                verificationStatus: 'APPROVED',
+                verificationStatus: { in: ['APPROVED', 'PENDING'] },
                 latitude: { not: null },
                 longitude: { not: null },
                 services: {
@@ -176,8 +229,12 @@ let JobsService = class JobsService {
         };
     }
     async getJob(jobId, requesterId, requesterRole) {
+        const numericId = parseInt(jobId, 10);
+        const where = !isNaN(numericId) && String(numericId) === jobId
+            ? { jobNumber: numericId }
+            : { id: jobId };
         const job = await this.prisma.job.findUnique({
-            where: { id: jobId },
+            where,
             include: {
                 attachments: true,
                 leads: {
