@@ -3,6 +3,7 @@ export declare class SearchTradespeopleQueryDto {
     serviceSlug?: string;
     postcode?: string;
     radiusMiles?: number;
+    guarantee?: boolean;
     page?: number;
     perPage?: number;
     sort?: 'rating' | 'reviewCount' | 'completedJobs';
