@@ -19,6 +19,7 @@ export declare class UsersController {
         postcode: string | null;
         memberSince: Date;
         verified: boolean;
+        guarantee: boolean;
         avgRating: number;
         reviewCount: number;
         completedJobs: number;
@@ -146,12 +147,12 @@ export declare class UsersController {
     updateUser(user: JwtPayload, dto: UpdateUserDto): Promise<{
         name: string;
         id: string;
-        createdAt: Date;
         email: string;
         role: import("@prisma/client").$Enums.UserRole;
         phone: string | null;
         avatarUrl: string | null;
         emailVerified: boolean;
+        createdAt: Date;
     }>;
     uploadAvatar(user: JwtPayload, file: Express.Multer.File): Promise<{
         avatarUrl: string;
