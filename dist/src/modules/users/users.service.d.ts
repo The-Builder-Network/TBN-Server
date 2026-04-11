@@ -7,11 +7,13 @@ import type { AddQualificationDto } from './dto/add-qualification.dto.js';
 import type { CreateMessageTemplateDto } from './dto/create-message-template.dto.js';
 import type { UpdateMessageTemplateDto } from './dto/update-message-template.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
+import { JobsService } from '../jobs/jobs.service.js';
 export declare class UsersService {
     private readonly prisma;
     private readonly uploads;
     private readonly postcode;
-    constructor(prisma: PrismaService, uploads: UploadsService, postcode: PostcodeService);
+    private readonly jobs;
+    constructor(prisma: PrismaService, uploads: UploadsService, postcode: PostcodeService, jobs: JobsService);
     getPublicProfile(username: string): Promise<{
         username: string;
         name: string;
@@ -74,6 +76,8 @@ export declare class UsersService {
         avgRating: number;
         reviewCount: number;
         completedJobs: number;
+        phone: string | null;
+        email: string | null;
         services: {
             id: string;
             serviceSlug: string;
@@ -102,6 +106,13 @@ export declare class UsersService {
             id: string;
             name: string;
             body: string;
+        }[];
+        documents: {
+            id: string;
+            fileUrl: string;
+            fileName: string;
+            mimeType: string;
+            createdAt: Date;
         }[];
     }>;
     updateMyProfile(userId: string, dto: UpdateProfileDto): Promise<{
@@ -146,16 +157,24 @@ export declare class UsersService {
             name: string;
             body: string;
         }[];
+        documents: {
+            id: string;
+            fileUrl: string;
+            fileName: string;
+            mimeType: string;
+            createdAt: Date;
+        }[];
     }>;
+    refreshLeads(userId: string): Promise<void>;
     updateUser(userId: string, dto: UpdateUserDto): Promise<{
-        name: string;
         id: string;
+        createdAt: Date;
         email: string;
         role: import("@prisma/client").$Enums.UserRole;
+        name: string;
         phone: string | null;
         avatarUrl: string | null;
         emailVerified: boolean;
-        createdAt: Date;
     }>;
     uploadAvatar(userId: string, file: Express.Multer.File): Promise<{
         avatarUrl: string;
@@ -196,4 +215,12 @@ export declare class UsersService {
     }>;
     deleteMessageTemplate(userId: string, templateId: string): Promise<void>;
     private computeBadges;
+    uploadDocument(userId: string, file: Express.Multer.File): Promise<{
+        id: string;
+        fileUrl: string;
+        fileName: string;
+        mimeType: string;
+        createdAt: Date;
+    }>;
+    deleteDocument(userId: string, docId: string): Promise<void>;
 }
