@@ -86,6 +86,7 @@ model User {
   passwordHash  String
   role          UserRole
   name          String
+  username      String?   @unique
   phone         String?
   avatarUrl     String?
   emailVerified Boolean   @default(false)
