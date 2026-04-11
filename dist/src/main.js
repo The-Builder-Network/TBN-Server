@@ -20,7 +20,7 @@ async function bootstrap() {
     }));
     app.useLogger(app.get(nestjs_pino_1.Logger));
     app.enableCors({
-        origin: process.env.FRONTEND_URL ?? 'http://localhost:5173',
+        origin: process.env.FRONTEND_URL,
         credentials: true,
     });
     app.useGlobalPipes(new common_1.ValidationPipe({
