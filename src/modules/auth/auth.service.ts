@@ -56,6 +56,7 @@ export class AuthService {
     email: string;
     role: string;
     name: string;
+    username: string | null;
     phone: string | null;
     avatarUrl: string | null;
     emailVerified: boolean;
@@ -66,11 +67,29 @@ export class AuthService {
       email: user.email,
       role: user.role,
       name: user.name,
+      username: user.username,
       phone: user.phone,
       avatarUrl: user.avatarUrl,
       emailVerified: user.emailVerified,
       createdAt: user.createdAt,
     };
+  }
+
+  private async generateUsername(name: string): Promise<string> {
+    const base = name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'user';
+    const existing = await this.prisma.user.findUnique({
+      where: { username: base },
+    });
+    if (!existing) return base;
+    let n = 2;
+    while (true) {
+      const candidate = `${base}${n}`;
+      const check = await this.prisma.user.findUnique({
+        where: { username: candidate },
+      });
+      if (!check) return candidate;
+      n++;
+    }
   }
 
   // ── Register ─────────────────────────────────────────────────
@@ -85,6 +104,7 @@ export class AuthService {
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
     const emailVerifyToken = randomBytes(32).toString('hex');
+    const username = await this.generateUsername(dto.name);
 
     const user = await this.prisma.user
       .create({
@@ -92,21 +112,14 @@ export class AuthService {
           email: dto.email,
           passwordHash,
           name: dto.name,
+          username,
           phone: dto.phone,
           role: dto.role as $Enums.UserRole,
           emailVerifyToken,
           ...(dto.role === 'TRADESPERSON'
             ? {
                 tradespersonProfile: {
-                  create: {
-                    username:
-                      dto.email
-                        .split('@')[0]
-                        .toLowerCase()
-                        .replace(/[^a-z0-9]/g, '') +
-                      '-' +
-                      randomBytes(3).toString('hex'),
-                  },
+                  create: { username },
                 },
                 leadCredit: {
                   create: { balance: 0 },
