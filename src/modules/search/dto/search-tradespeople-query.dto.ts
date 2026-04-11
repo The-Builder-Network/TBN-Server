@@ -1,4 +1,11 @@
-import { IsOptional, IsString, IsInt, IsIn, IsBoolean, Min } from 'class-validator';
+import {
+  IsOptional,
+  IsString,
+  IsInt,
+  IsIn,
+  IsBoolean,
+  Min,
+} from 'class-validator';
 import { Transform } from 'class-transformer';
 
 export class SearchTradespeopleQueryDto {
@@ -21,7 +28,9 @@ export class SearchTradespeopleQueryDto {
   radiusMiles?: number;
 
   @IsOptional()
-  @Transform(({ value }: { value: unknown }) => value === 'true' || value === true)
+  @Transform(
+    ({ value }: { value: unknown }) => value === 'true' || value === true,
+  )
   @IsBoolean()
   guarantee?: boolean;
 

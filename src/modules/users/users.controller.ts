@@ -128,6 +128,14 @@ export class UsersController {
 
   // ── SERVICES ──────────────────────────────────────────────────────────────
 
+  @Post('me/leads/refresh')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRADESPERSON')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async refreshLeads(@CurrentUser() user: JwtPayload) {
+    await this.usersService.refreshLeads(user.sub);
+  }
+
   @Post('me/services')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('TRADESPERSON')
@@ -253,5 +261,42 @@ export class UsersController {
     @Param('id') id: string,
   ) {
     return this.usersService.deleteMessageTemplate(user.sub, id);
+  }
+
+  // ── PROFILE DOCUMENTS ─────────────────────────────────────────────────────
+
+  @Post('me/documents')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRADESPERSON')
+  @UseInterceptors(
+    FileInterceptor('document', {
+      storage: memoryStorage(),
+      limits: { fileSize: 20 * 1024 * 1024 }, // 20 MB
+    }),
+  )
+  @HttpCode(HttpStatus.CREATED)
+  async uploadDocument(
+    @CurrentUser() user: JwtPayload,
+    @UploadedFile(
+      new ParseFilePipeBuilder()
+        .addFileTypeValidator({
+          fileType: /^(image\/(jpeg|png|webp)|application\/pdf)$/,
+        })
+        .build({ fileIsRequired: true }),
+    )
+    file: Express.Multer.File,
+  ) {
+    return this.usersService.uploadDocument(user.sub, file);
+  }
+
+  @Delete('me/documents/:id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRADESPERSON')
+  @HttpCode(HttpStatus.NO_CONTENT)
+  async deleteDocument(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+  ) {
+    return this.usersService.deleteDocument(user.sub, id);
   }
 }

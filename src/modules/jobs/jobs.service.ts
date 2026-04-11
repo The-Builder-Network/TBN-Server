@@ -107,6 +107,84 @@ export class JobsService {
     };
   }
 
+  // ── Backfill leads for a tradesperson ────────────────────────────────────
+
+  /**
+   * Called when a tradesperson adds a new service or updates their work area.
+   * Finds all ACTIVE, non-expired jobs that match and creates missing Lead rows.
+   */
+  async backfillLeadsForTradesperson(tradespersonId: string): Promise<void> {
+    const profile = await this.prisma.tradespersonProfile.findUnique({
+      where: { userId: tradespersonId },
+      select: {
+        latitude: true,
+        longitude: true,
+        workRadiusMiles: true,
+        verificationStatus: true,
+        services: { select: { serviceSlug: true } },
+      },
+    });
+
+    if (
+      !profile ||
+      !profile.latitude ||
+      !profile.longitude ||
+      profile.verificationStatus === 'REJECTED' ||
+      profile.services.length === 0
+    ) {
+      return;
+    }
+
+    const serviceSlugs = profile.services.map((s) => s.serviceSlug);
+    const now = new Date();
+
+    const activeJobs = await this.prisma.job.findMany({
+      where: {
+        status: 'ACTIVE',
+        serviceSlug: { in: serviceSlugs },
+        latitude: { not: null },
+        longitude: { not: null },
+      },
+      select: {
+        id: true,
+        serviceSlug: true,
+        latitude: true,
+        longitude: true,
+      },
+    });
+
+    const leads: {
+      jobId: string;
+      tradespersonId: string;
+      creditCost: number;
+      distanceMiles: number;
+      expiresAt: Date;
+    }[] = [];
+
+    for (const job of activeJobs) {
+      if (job.latitude === null || job.longitude === null) continue;
+      const dist = haversineDistance(
+        job.latitude,
+        job.longitude,
+        profile.latitude,
+        profile.longitude,
+      );
+      if (dist <= profile.workRadiusMiles) {
+        leads.push({
+          jobId: job.id,
+          tradespersonId,
+          creditCost: calculateCreditCost(job.serviceSlug ?? ''),
+          distanceMiles: dist,
+          expiresAt: new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000),
+        });
+      }
+    }
+
+    if (leads.length > 0) {
+      await this.prisma.lead.createMany({ data: leads, skipDuplicates: true });
+    }
+  }
+
   // ── Matching algorithm ────────────────────────────────────────────────────
 
   private async matchTradespersons(
@@ -119,7 +197,7 @@ export class JobsService {
     // Fetch all verified tradespeople with the matching service
     const candidates = await this.prisma.tradespersonProfile.findMany({
       where: {
-        verificationStatus: 'APPROVED',
+        verificationStatus: { in: ['APPROVED', 'PENDING'] },
         latitude: { not: null },
         longitude: { not: null },
         services: {
@@ -237,8 +315,15 @@ export class JobsService {
   // ── Get job detail ────────────────────────────────────────────────────────
 
   async getJob(jobId: string, requesterId: string, requesterRole: string) {
+    // Accept either a numeric jobNumber or a cuid
+    const numericId = parseInt(jobId, 10);
+    const where =
+      !isNaN(numericId) && String(numericId) === jobId
+        ? { jobNumber: numericId }
+        : { id: jobId };
+
     const job = await this.prisma.job.findUnique({
-      where: { id: jobId },
+      where,
       include: {
         attachments: true,
         leads: {
