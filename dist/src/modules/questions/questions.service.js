@@ -72,8 +72,12 @@ let QuestionsService = class QuestionsService {
         };
     }
     async getQuestion(id, currentUserId) {
+        const numericId = parseInt(id, 10);
+        const where = !isNaN(numericId) && String(numericId) === id
+            ? { questionNumber: numericId }
+            : { id };
         const question = await this.prisma.question.findUnique({
-            where: { id },
+            where,
             include: {
                 author: { select: { name: true, avatarUrl: true } },
                 answers: {

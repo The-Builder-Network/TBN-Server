@@ -61,6 +61,7 @@ let LeadsService = class LeadsService {
                         select: {
                             id: true,
                             title: true,
+                            description: true,
                             serviceSlug: true,
                             tradeSlug: true,
                             postcode: true,
