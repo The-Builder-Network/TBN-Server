@@ -17,6 +17,7 @@ export declare class AuthController {
             email: string;
             role: string;
             name: string;
+            username: string | null;
             phone: string | null;
             avatarUrl: string | null;
             emailVerified: boolean;
@@ -31,6 +32,7 @@ export declare class AuthController {
             email: string;
             role: string;
             name: string;
+            username: string | null;
             phone: string | null;
             avatarUrl: string | null;
             emailVerified: boolean;
@@ -46,6 +48,7 @@ export declare class AuthController {
         email: string;
         role: string;
         name: string;
+        username: string | null;
         phone: string | null;
         avatarUrl: string | null;
         emailVerified: boolean;

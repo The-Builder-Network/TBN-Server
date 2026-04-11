@@ -17,6 +17,7 @@ export declare class AuthService {
     constructor(prisma: PrismaService, jwt: JwtService, config: ConfigService);
     private signTokens;
     private formatUser;
+    private generateUsername;
     register(dto: RegisterDto): Promise<{
         accessToken: string;
         refreshToken: string;
@@ -25,6 +26,7 @@ export declare class AuthService {
             email: string;
             role: string;
             name: string;
+            username: string | null;
             phone: string | null;
             avatarUrl: string | null;
             emailVerified: boolean;
@@ -39,6 +41,7 @@ export declare class AuthService {
             email: string;
             role: string;
             name: string;
+            username: string | null;
             phone: string | null;
             avatarUrl: string | null;
             emailVerified: boolean;
@@ -54,6 +57,7 @@ export declare class AuthService {
         email: string;
         role: string;
         name: string;
+        username: string | null;
         phone: string | null;
         avatarUrl: string | null;
         emailVerified: boolean;

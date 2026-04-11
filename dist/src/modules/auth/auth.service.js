@@ -77,11 +77,30 @@ let AuthService = AuthService_1 = class AuthService {
             email: user.email,
             role: user.role,
             name: user.name,
+            username: user.username,
             phone: user.phone,
             avatarUrl: user.avatarUrl,
             emailVerified: user.emailVerified,
             createdAt: user.createdAt,
         };
+    }
+    async generateUsername(name) {
+        const base = name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'user';
+        const existing = await this.prisma.user.findUnique({
+            where: { username: base },
+        });
+        if (!existing)
+            return base;
+        let n = 2;
+        while (true) {
+            const candidate = `${base}${n}`;
+            const check = await this.prisma.user.findUnique({
+                where: { username: candidate },
+            });
+            if (!check)
+                return candidate;
+            n++;
+        }
     }
     async register(dto) {
         const existing = await this.prisma.user.findUnique({
@@ -92,26 +111,21 @@ let AuthService = AuthService_1 = class AuthService {
         }
         const passwordHash = await bcrypt.hash(dto.password, 12);
         const emailVerifyToken = (0, crypto_1.randomBytes)(32).toString('hex');
+        const username = await this.generateUsername(dto.name);
         const user = await this.prisma.user
             .create({
             data: {
                 email: dto.email,
                 passwordHash,
                 name: dto.name,
+                username,
                 phone: dto.phone,
                 role: dto.role,
                 emailVerifyToken,
                 ...(dto.role === 'TRADESPERSON'
                     ? {
                         tradespersonProfile: {
-                            create: {
-                                username: dto.email
-                                    .split('@')[0]
-                                    .toLowerCase()
-                                    .replace(/[^a-z0-9]/g, '') +
-                                    '-' +
-                                    (0, crypto_1.randomBytes)(3).toString('hex'),
-                            },
+                            create: { username },
                         },
                         leadCredit: {
                             create: { balance: 0 },
