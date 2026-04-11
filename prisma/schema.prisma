@@ -167,6 +167,7 @@ model TradespersonProfile {
   qualifications    Qualification[]
   portfolioItems    PortfolioItem[]
   messageTemplates  MessageTemplate[]
+  documents         ProfileDocument[]
 
   @@index([username])
   @@index([postcode])
@@ -220,6 +221,18 @@ model MessageTemplate {
   createdAt             DateTime            @default(now())
 
   @@map("message_templates")
+}
+
+model ProfileDocument {
+  id                    String              @id @default(cuid())
+  tradespersonProfileId String
+  tradespersonProfile   TradespersonProfile @relation(fields: [tradespersonProfileId], references: [id], onDelete: Cascade)
+  fileUrl               String
+  fileName              String
+  mimeType              String
+  createdAt             DateTime            @default(now())
+
+  @@map("profile_documents")
 }
 
 // ─── Jobs ────────────────────────────────────────────────────
