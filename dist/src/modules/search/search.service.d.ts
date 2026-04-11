@@ -16,6 +16,8 @@ export declare class SearchService {
             avgRating: number;
             reviewCount: number;
             completedJobs: number;
+            verified: boolean;
+            guarantee: boolean;
             services: string[];
         }[];
         meta: {

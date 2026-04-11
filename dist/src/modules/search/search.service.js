@@ -18,7 +18,7 @@ let SearchService = class SearchService {
         this.prisma = prisma;
     }
     async searchTradespeople(query) {
-        const { query: searchTerm, serviceSlug, sort = 'rating', order = 'desc', page = 1, perPage = 20, } = query;
+        const { query: searchTerm, serviceSlug, guarantee, sort = 'rating', order = 'desc', page = 1, perPage = 20, } = query;
         const where = {
             verificationStatus: 'APPROVED',
         };
@@ -32,6 +32,9 @@ let SearchService = class SearchService {
         }
         if (serviceSlug) {
             where.services = { some: { serviceSlug } };
+        }
+        if (guarantee !== undefined) {
+            where.guarantee = guarantee;
         }
         const sortMap = {
             rating: 'avgRating',
@@ -63,6 +66,8 @@ let SearchService = class SearchService {
             avgRating: p.avgRating,
             reviewCount: p.reviewCount,
             completedJobs: p.completedJobs,
+            verified: p.verificationStatus === 'APPROVED',
+            guarantee: p.guarantee,
             services: p.services.map((s) => s.serviceSlug),
         }));
         return {
