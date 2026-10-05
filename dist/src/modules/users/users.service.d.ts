@@ -15,167 +15,90 @@ export declare class UsersService {
     private readonly jobs;
     constructor(prisma: PrismaService, uploads: UploadsService, postcode: PostcodeService, jobs: JobsService);
     getPublicProfile(username: string): Promise<{
-        username: string;
-        name: string;
-        companyName: string | null;
-        trade: string | null;
-        avatarUrl: string | null;
-        bio: string | null;
-        postcode: string | null;
-        memberSince: Date;
+        username: any;
+        name: any;
+        companyName: any;
+        trade: any;
+        avatarUrl: any;
+        bio: any;
+        postcode: any;
+        memberSince: any;
         verified: boolean;
-        guarantee: boolean;
-        avgRating: number;
-        reviewCount: number;
-        completedJobs: number;
+        guarantee: any;
+        avgRating: any;
+        reviewCount: any;
+        completedJobs: any;
         badges: string[];
-        workRadiusMiles: number;
-        services: string[];
-        qualifications: {
-            name: string;
-            verified: boolean;
-        }[];
+        workRadiusMiles: any;
+        services: any;
+        qualifications: any;
         insurance: {
-            publicLiability: string | null;
-            employersLiability: string | null;
-            professionalIndemnity: string | null;
-            verified: boolean;
-            expiresAt: Date | null;
+            publicLiability: any;
+            employersLiability: any;
+            professionalIndemnity: any;
+            verified: any;
+            expiresAt: any;
         };
-        portfolioItems: {
-            id: string;
-            imageUrl: string;
-            title: string | null;
-            category: string | null;
-        }[];
+        portfolioItems: any;
         ratingBreakdown: Record<string, number>;
-        reviews: {
-            id: string;
-            authorName: string;
-            authorAvatar: string | null;
-            rating: number;
-            comment: string;
-            jobTitle: string;
-            createdAt: Date;
-            reply: {
-                body: string;
-                createdAt: Date;
-            } | undefined;
-        }[];
+        reviews: any;
     }>;
     getMyProfile(userId: string): Promise<{
-        id: string;
-        username: string;
-        companyName: string | null;
-        bio: string | null;
-        trade: string | null;
-        postcode: string | null;
-        workRadiusMiles: number;
-        verificationStatus: import("@prisma/client").$Enums.VerificationStatus;
-        guarantee: boolean;
-        avgRating: number;
-        reviewCount: number;
-        completedJobs: number;
-        phone: string | null;
-        email: string | null;
-        services: {
-            id: string;
-            serviceSlug: string;
-            tradeSlug: string | null;
-        }[];
-        qualifications: {
-            id: string;
-            name: string;
-            verified: boolean;
-            year: number | null;
-        }[];
-        portfolioItems: {
-            id: string;
-            imageUrl: string;
-            title: string | null;
-            category: string | null;
-        }[];
+        id: any;
+        username: any;
+        companyName: any;
+        bio: any;
+        trade: any;
+        postcode: any;
+        workRadiusMiles: any;
+        verificationStatus: any;
+        guarantee: any;
+        avgRating: any;
+        reviewCount: any;
+        completedJobs: any;
+        phone: any;
+        email: any;
+        services: any;
+        qualifications: any;
+        portfolioItems: any;
         insurance: {
-            publicLiability: string | null;
-            employersLiability: string | null;
-            professionalIndemnity: string | null;
-            verified: boolean;
-            expiresAt: Date | null;
+            publicLiability: any;
+            employersLiability: any;
+            professionalIndemnity: any;
+            verified: any;
+            expiresAt: any;
         };
-        messageTemplates: {
-            id: string;
-            name: string;
-            body: string;
-        }[];
-        documents: {
-            id: string;
-            fileUrl: string;
-            fileName: string;
-            mimeType: string;
-            createdAt: Date;
-        }[];
+        messageTemplates: any;
+        documents: any;
     }>;
     updateMyProfile(userId: string, dto: UpdateProfileDto): Promise<{
-        id: string;
-        username: string;
-        companyName: string | null;
-        bio: string | null;
-        trade: string | null;
-        postcode: string | null;
-        workRadiusMiles: number;
-        verificationStatus: import("@prisma/client").$Enums.VerificationStatus;
-        guarantee: boolean;
-        avgRating: number;
-        reviewCount: number;
-        completedJobs: number;
-        services: {
-            id: string;
-            serviceSlug: string;
-            tradeSlug: string | null;
-        }[];
-        qualifications: {
-            id: string;
-            name: string;
-            verified: boolean;
-            year: number | null;
-        }[];
-        portfolioItems: {
-            id: string;
-            imageUrl: string;
-            title: string | null;
-            category: string | null;
-        }[];
+        id: any;
+        username: any;
+        companyName: any;
+        bio: any;
+        trade: any;
+        postcode: any;
+        workRadiusMiles: any;
+        verificationStatus: any;
+        guarantee: any;
+        avgRating: any;
+        reviewCount: any;
+        completedJobs: any;
+        services: any;
+        qualifications: any;
+        portfolioItems: any;
         insurance: {
-            publicLiability: string | null;
-            employersLiability: string | null;
-            professionalIndemnity: string | null;
-            verified: boolean;
-            expiresAt: Date | null;
+            publicLiability: any;
+            employersLiability: any;
+            professionalIndemnity: any;
+            verified: any;
+            expiresAt: any;
         };
-        messageTemplates: {
-            id: string;
-            name: string;
-            body: string;
-        }[];
-        documents: {
-            id: string;
-            fileUrl: string;
-            fileName: string;
-            mimeType: string;
-            createdAt: Date;
-        }[];
+        messageTemplates: any;
+        documents: any;
     }>;
     refreshLeads(userId: string): Promise<void>;
-    updateUser(userId: string, dto: UpdateUserDto): Promise<{
-        id: string;
-        createdAt: Date;
-        email: string;
-        role: import("@prisma/client").$Enums.UserRole;
-        name: string;
-        phone: string | null;
-        avatarUrl: string | null;
-        emailVerified: boolean;
-    }>;
+    updateUser(userId: string, dto: UpdateUserDto): Promise<any>;
     uploadAvatar(userId: string, file: Express.Multer.File): Promise<{
         avatarUrl: string;
     }>;
@@ -184,43 +107,43 @@ export declare class UsersService {
         message: string;
     }>;
     addService(userId: string, dto: AddServiceDto): Promise<{
-        id: string;
-        serviceSlug: string;
-        tradeSlug: string | null;
+        id: any;
+        serviceSlug: any;
+        tradeSlug: any;
     }>;
     removeService(userId: string, serviceId: string): Promise<void>;
     addQualification(userId: string, dto: AddQualificationDto): Promise<{
-        id: string;
-        name: string;
-        verified: boolean;
-        year: number | null;
+        id: any;
+        name: any;
+        verified: any;
+        year: any;
     }>;
     removeQualification(userId: string, qualId: string): Promise<void>;
     uploadPortfolioItem(userId: string, file: Express.Multer.File, title?: string, category?: string): Promise<{
-        id: string;
-        imageUrl: string;
-        title: string | null;
-        category: string | null;
+        id: any;
+        imageUrl: any;
+        title: any;
+        category: any;
     }>;
     deletePortfolioItem(userId: string, itemId: string): Promise<void>;
     createMessageTemplate(userId: string, dto: CreateMessageTemplateDto): Promise<{
-        id: string;
-        name: string;
-        body: string;
+        id: any;
+        name: any;
+        body: any;
     }>;
     updateMessageTemplate(userId: string, templateId: string, dto: UpdateMessageTemplateDto): Promise<{
-        id: string;
-        name: string;
-        body: string;
+        id: any;
+        name: any;
+        body: any;
     }>;
     deleteMessageTemplate(userId: string, templateId: string): Promise<void>;
     private computeBadges;
     uploadDocument(userId: string, file: Express.Multer.File): Promise<{
-        id: string;
-        fileUrl: string;
-        fileName: string;
-        mimeType: string;
-        createdAt: Date;
+        id: any;
+        fileUrl: any;
+        fileName: any;
+        mimeType: any;
+        createdAt: any;
     }>;
     deleteDocument(userId: string, docId: string): Promise<void>;
 }
