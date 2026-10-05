@@ -10,74 +10,39 @@ export declare class JobsService {
     private readonly postcode;
     constructor(prisma: PrismaService, uploads: UploadsService, postcode: PostcodeService);
     createJob(homeownerId: string, dto: CreateJobDto, attachmentFiles: Express.Multer.File[]): Promise<{
-        id: string;
-        jobNumber: number;
-        status: import("@prisma/client").$Enums.JobStatus;
+        id: any;
+        jobNumber: any;
+        status: any;
         matchedCount: number;
-        createdAt: Date;
+        createdAt: any;
     }>;
     backfillLeadsForTradesperson(tradespersonId: string): Promise<void>;
     private matchTradespersons;
     getJobs(homeownerId: string, query: GetJobsQueryDto): Promise<{
-        data: {
-            id: string;
-            jobNumber: number;
-            title: string;
-            status: import("@prisma/client").$Enums.JobStatus;
-            serviceSlug: string;
-            postcode: string;
-            placeName: string | null;
-            interestedCount: number;
-            createdAt: Date;
-        }[];
+        data: any;
         meta: {
-            total: number;
+            total: any;
             page: number;
             perPage: number;
             totalPages: number;
         };
     }>;
     getJob(jobId: string, requesterId: string, requesterRole: string): Promise<{
-        id: string;
-        jobNumber: number;
-        title: string;
-        description: string;
-        serviceSlug: string;
-        postcode: string;
-        placeName: string | null;
-        status: import("@prisma/client").$Enums.JobStatus;
-        answersJson: import("@prisma/client/runtime/client").JsonValue;
-        createdAt: Date;
-        attachments: {
-            id: string;
-            fileUrl: string;
-            fileName: string;
-            mimeType: string;
-        }[];
-        responses: {
-            leadId: string;
-            leadStatus: import("@prisma/client").$Enums.LeadStatus;
-            tradesperson: {
-                id: string;
-                name: string;
-                avatarUrl: string | null;
-                username: string | undefined;
-                companyName: string | null | undefined;
-                avgRating: number;
-                reviewCount: number;
-                verified: boolean;
-            };
-            quote: {
-                id: string;
-                message: string;
-                amountPence: number | null;
-                estimateRange: string | null;
-                status: import("@prisma/client").$Enums.QuoteStatus;
-            } | undefined;
-        }[];
+        id: any;
+        jobNumber: any;
+        title: any;
+        description: any;
+        serviceSlug: any;
+        postcode: any;
+        placeName: any;
+        status: any;
+        answersJson: any;
+        createdAt: any;
+        attachments: any;
+        responses: any;
     }>;
     updateJobStatus(jobId: string, homeownerId: string, dto: UpdateJobStatusDto): Promise<{
-        id: string;
-        status: import("@prisma/client").$Enums.JobStatus;
+        id: any;
+        status: any;
     }>;
 }
