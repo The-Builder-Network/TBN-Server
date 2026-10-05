@@ -8,17 +8,9 @@ export declare class NotificationsController {
         count: number;
     }>;
     getNotifications(user: JwtPayload, query: GetNotificationsQueryDto): Promise<{
-        data: {
-            id: string;
-            type: import("@prisma/client").$Enums.NotificationType;
-            title: string;
-            body: string | undefined;
-            linkUrl: string | undefined;
-            read: boolean;
-            createdAt: string;
-        }[];
+        data: any;
         meta: {
-            total: number;
+            total: any;
             page: number;
             perPage: number;
             totalPages: number;

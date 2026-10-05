@@ -10,47 +10,22 @@ export declare class MessagingService {
     private readonly chatGateway;
     constructor(prisma: PrismaService, notificationsService: NotificationsService, notificationGateway: NotificationGateway, chatGateway: ChatGateway);
     getConversations(userId: string): Promise<{
-        conversations: {
-            id: string;
-            job: {
-                serviceSlug: string;
-                id: string;
-                title: string;
-            };
-            otherParty: {
-                name: string;
-                id: string;
-                avatarUrl: string | null;
-            };
-            unreadCount: number;
-            lastMessage: {
-                body: string;
-                senderId: string;
-                createdAt: string;
-            } | null;
-            createdAt: string;
-        }[];
+        conversations: any;
     }>;
     getMessages(conversationId: string, userId: string, page?: number, perPage?: number): Promise<{
-        data: {
-            id: string;
-            body: string;
-            senderId: string;
-            readAt: string | null;
-            createdAt: string;
-        }[];
+        data: any;
         meta: {
-            total: number;
+            total: any;
             page: number;
             perPage: number;
             totalPages: number;
         };
     }>;
     sendMessage(conversationId: string, userId: string, dto: SendMessageDto): Promise<{
-        id: string;
-        body: string;
-        senderId: string;
-        readAt: string | null;
-        createdAt: string;
+        id: any;
+        body: any;
+        senderId: any;
+        readAt: any;
+        createdAt: any;
     }>;
 }

@@ -11,28 +11,11 @@ export interface CreateNotificationData {
 export declare class NotificationsService {
     private readonly prisma;
     constructor(prisma: PrismaService);
-    createNotification(data: CreateNotificationData): Promise<{
-        id: string;
-        createdAt: Date;
-        userId: string;
-        type: import("@prisma/client").$Enums.NotificationType;
-        body: string | null;
-        title: string;
-        linkUrl: string | null;
-        read: boolean;
-    }>;
+    createNotification(data: CreateNotificationData): Promise<any>;
     getNotifications(userId: string, query: GetNotificationsQueryDto): Promise<{
-        data: {
-            id: string;
-            type: import("@prisma/client").$Enums.NotificationType;
-            title: string;
-            body: string | undefined;
-            linkUrl: string | undefined;
-            read: boolean;
-            createdAt: string;
-        }[];
+        data: any;
         meta: {
-            total: number;
+            total: any;
             page: number;
             perPage: number;
             totalPages: number;
