@@ -5,47 +5,22 @@ export declare class MessagingController {
     private readonly messagingService;
     constructor(messagingService: MessagingService);
     getConversations(user: JwtPayload): Promise<{
-        conversations: {
-            id: string;
-            job: {
-                serviceSlug: string;
-                id: string;
-                title: string;
-            };
-            otherParty: {
-                name: string;
-                id: string;
-                avatarUrl: string | null;
-            };
-            unreadCount: number;
-            lastMessage: {
-                body: string;
-                senderId: string;
-                createdAt: string;
-            } | null;
-            createdAt: string;
-        }[];
+        conversations: any;
     }>;
     getMessages(user: JwtPayload, id: string, page: number, perPage: number): Promise<{
-        data: {
-            id: string;
-            body: string;
-            senderId: string;
-            readAt: string | null;
-            createdAt: string;
-        }[];
+        data: any;
         meta: {
-            total: number;
+            total: any;
             page: number;
             perPage: number;
             totalPages: number;
         };
     }>;
     sendMessage(user: JwtPayload, id: string, dto: SendMessageDto): Promise<{
-        id: string;
-        body: string;
-        senderId: string;
-        readAt: string | null;
-        createdAt: string;
+        id: any;
+        body: any;
+        senderId: any;
+        readAt: any;
+        createdAt: any;
     }>;
 }
