@@ -7,32 +7,20 @@ export declare class ReviewsController {
     private readonly reviewsService;
     constructor(reviewsService: ReviewsService);
     createReview(user: JwtPayload, dto: CreateReviewDto): Promise<{
-        id: string;
+        id: any;
     }>;
     getReviews(query: GetReviewsQueryDto): Promise<{
-        data: {
-            id: string;
-            authorName: string;
-            authorAvatar: string | null;
-            rating: number;
-            comment: string;
-            jobTitle: string;
-            createdAt: Date;
-            reply: {
-                body: string;
-                createdAt: Date;
-            } | undefined;
-        }[];
+        data: any;
         meta: {
-            total: number;
+            total: any;
             page: number;
             perPage: number;
             totalPages: number;
         };
     }>;
     replyToReview(user: JwtPayload, id: string, dto: ReplyToReviewDto): Promise<{
-        id: string;
-        body: string;
-        createdAt: Date;
+        id: any;
+        body: any;
+        createdAt: any;
     }>;
 }
