@@ -6,11 +6,11 @@ export declare class PaymentsController {
     private readonly paymentsService;
     constructor(paymentsService: PaymentsService);
     getBalance(user: JwtPayload): Promise<{
-        balance: number;
-        autoTopup: boolean;
-        topupAmount: number | null;
-        topupThreshold: number | null;
-        lastTopupAt: Date | null;
+        balance: any;
+        autoTopup: any;
+        topupAmount: any;
+        topupThreshold: any;
+        lastTopupAt: any;
     }>;
     createCheckout(user: JwtPayload, dto: CreateCheckoutDto): Promise<{
         checkoutUrl: string;
@@ -22,27 +22,19 @@ export declare class PaymentsController {
         received: boolean;
     }>;
     getHistory(user: JwtPayload, page?: string, perPage?: string): Promise<{
-        data: {
-            id: string;
-            createdAt: Date;
-            type: import("@prisma/client").$Enums.PaymentType;
-            status: import("@prisma/client").$Enums.PaymentStatus;
-            description: string | null;
-            amountPence: number;
-            credits: number | null;
-        }[];
+        data: any;
         meta: {
-            total: number;
+            total: any;
             page: number;
             perPage: number;
             totalPages: number;
         };
     }>;
     updateAutoTopup(user: JwtPayload, dto: UpdateAutoTopupDto): Promise<{
-        balance: number;
-        autoTopup: boolean;
-        topupAmount: number | null;
-        topupThreshold: number | null;
-        lastTopupAt: Date | null;
+        balance: any;
+        autoTopup: any;
+        topupAmount: any;
+        topupThreshold: any;
+        lastTopupAt: any;
     }>;
 }

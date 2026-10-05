@@ -9,11 +9,11 @@ export declare class PaymentsService {
     private readonly logger;
     constructor(prisma: PrismaService, stripeService: StripeService, configService: ConfigService);
     getBalance(userId: string): Promise<{
-        balance: number;
-        autoTopup: boolean;
-        topupAmount: number | null;
-        topupThreshold: number | null;
-        lastTopupAt: Date | null;
+        balance: any;
+        autoTopup: any;
+        topupAmount: any;
+        topupThreshold: any;
+        lastTopupAt: any;
     }>;
     createCheckout(userId: string, creditAmount: number): Promise<{
         checkoutUrl: string;
@@ -24,40 +24,21 @@ export declare class PaymentsService {
     private handleCheckoutCompleted;
     private handleChargeRefunded;
     getPaymentHistory(userId: string, page?: number, perPage?: number): Promise<{
-        data: {
-            id: string;
-            createdAt: Date;
-            type: import("@prisma/client").$Enums.PaymentType;
-            status: import("@prisma/client").$Enums.PaymentStatus;
-            description: string | null;
-            amountPence: number;
-            credits: number | null;
-        }[];
+        data: any;
         meta: {
-            total: number;
+            total: any;
             page: number;
             perPage: number;
             totalPages: number;
         };
     }>;
     updateAutoTopup(userId: string, dto: UpdateAutoTopupDto): Promise<{
-        balance: number;
-        autoTopup: boolean;
-        topupAmount: number | null;
-        topupThreshold: number | null;
-        lastTopupAt: Date | null;
+        balance: any;
+        autoTopup: any;
+        topupAmount: any;
+        topupThreshold: any;
+        lastTopupAt: any;
     }>;
     triggerAutoTopupIfNeeded(userId: string): Promise<void>;
-    getPaymentById(id: string, userId: string): Promise<{
-        id: string;
-        createdAt: Date;
-        userId: string;
-        type: import("@prisma/client").$Enums.PaymentType;
-        status: import("@prisma/client").$Enums.PaymentStatus;
-        description: string | null;
-        amountPence: number;
-        credits: number | null;
-        stripeSessionId: string | null;
-        stripePaymentIntentId: string | null;
-    }>;
+    getPaymentById(id: string, userId: string): Promise<any>;
 }
