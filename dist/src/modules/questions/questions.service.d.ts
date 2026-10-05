@@ -6,61 +6,39 @@ export declare class QuestionsService {
     private readonly prisma;
     constructor(prisma: PrismaService);
     createQuestion(authorId: string, dto: CreateQuestionDto): Promise<{
-        id: string;
-        questionNumber: number;
+        id: any;
+        questionNumber: any;
     }>;
     getQuestions(query: GetQuestionsQueryDto): Promise<{
-        data: {
-            id: string;
-            questionNumber: number;
-            title: string;
-            body: string;
-            serviceSlug: string | undefined;
-            authorName: string;
-            answerCount: number;
-            hasBestAnswer: boolean;
-            createdAt: string;
-        }[];
+        data: any;
         meta: {
             page: number;
             perPage: number;
-            total: number;
+            total: any;
             totalPages: number;
         };
     }>;
     getQuestion(id: string, currentUserId?: string): Promise<{
-        id: string;
-        questionNumber: number;
-        title: string;
-        body: string;
-        serviceSlug: string | undefined;
-        authorName: string;
-        authorAvatar: string | undefined;
-        authorId: string;
-        createdAt: string;
-        answers: {
-            id: string;
-            authorId: string;
-            authorName: string;
-            authorAvatar: string | undefined;
-            authorUsername: string | undefined;
-            authorTrade: string | undefined;
-            body: string;
-            isBest: boolean;
-            likesCount: number;
-            likedByMe: boolean;
-            createdAt: string;
-        }[];
+        id: any;
+        questionNumber: any;
+        title: any;
+        body: any;
+        serviceSlug: any;
+        authorName: any;
+        authorAvatar: any;
+        authorId: any;
+        createdAt: any;
+        answers: any;
     }>;
     createAnswer(questionId: string, authorId: string, dto: CreateAnswerDto): Promise<{
-        id: string;
+        id: any;
     }>;
     toggleAnswerLike(answerId: string, userId: string): Promise<{
         liked: boolean;
-        likesCount: number;
+        likesCount: any;
     }>;
     editAnswer(answerId: string, userId: string, body: string): Promise<{
-        id: string;
+        id: any;
     }>;
     deleteAnswer(answerId: string, userId: string): Promise<void>;
     markBestAnswer(answerId: string, userId: string): Promise<void>;
