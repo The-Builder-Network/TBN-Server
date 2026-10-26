@@ -1,3 +1,6 @@
+-- CreateSchema
+CREATE SCHEMA IF NOT EXISTS "public";
+
 -- CreateEnum
 CREATE TYPE "UserRole" AS ENUM ('HOMEOWNER', 'TRADESPERSON', 'ADMIN');
 
@@ -29,9 +32,13 @@ CREATE TABLE "users" (
     "passwordHash" TEXT NOT NULL,
     "role" "UserRole" NOT NULL,
     "name" TEXT NOT NULL,
+    "username" TEXT,
     "phone" TEXT,
     "avatarUrl" TEXT,
     "emailVerified" BOOLEAN NOT NULL DEFAULT false,
+    "passwordResetToken" TEXT,
+    "passwordResetExpiry" TIMESTAMP(3),
+    "emailVerifyToken" TEXT,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
 
@@ -115,8 +122,21 @@ CREATE TABLE "message_templates" (
 );
 
 -- CreateTable
+CREATE TABLE "profile_documents" (
+    "id" TEXT NOT NULL,
+    "tradespersonProfileId" TEXT NOT NULL,
+    "fileUrl" TEXT NOT NULL,
+    "fileName" TEXT NOT NULL,
+    "mimeType" TEXT NOT NULL,
+    "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+
+    CONSTRAINT "profile_documents_pkey" PRIMARY KEY ("id")
+);
+
+-- CreateTable
 CREATE TABLE "jobs" (
     "id" TEXT NOT NULL,
+    "jobNumber" SERIAL NOT NULL,
     "homeownerId" TEXT NOT NULL,
     "title" TEXT NOT NULL,
     "description" TEXT NOT NULL,
@@ -234,6 +254,7 @@ CREATE TABLE "review_replies" (
 -- CreateTable
 CREATE TABLE "questions" (
     "id" TEXT NOT NULL,
+    "questionNumber" SERIAL NOT NULL,
     "authorId" TEXT NOT NULL,
     "serviceSlug" TEXT,
     "title" TEXT NOT NULL,
@@ -335,6 +356,15 @@ CREATE TABLE "trades" (
 CREATE UNIQUE INDEX "users_email_key" ON "users"("email");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "users_username_key" ON "users"("username");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "users_passwordResetToken_key" ON "users"("passwordResetToken");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "users_emailVerifyToken_key" ON "users"("emailVerifyToken");
+
+-- CreateIndex
 CREATE INDEX "users_email_idx" ON "users"("email");
 
 -- CreateIndex
@@ -363,6 +393,9 @@ CREATE INDEX "tradesperson_services_serviceSlug_idx" ON "tradesperson_services"(
 
 -- CreateIndex
 CREATE UNIQUE INDEX "tradesperson_services_tradespersonProfileId_serviceSlug_tra_key" ON "tradesperson_services"("tradespersonProfileId", "serviceSlug", "tradeSlug");
+
+-- CreateIndex
+CREATE UNIQUE INDEX "jobs_jobNumber_key" ON "jobs"("jobNumber");
 
 -- CreateIndex
 CREATE INDEX "jobs_homeownerId_idx" ON "jobs"("homeownerId");
@@ -425,6 +458,9 @@ CREATE UNIQUE INDEX "reviews_jobId_authorId_key" ON "reviews"("jobId", "authorId
 CREATE UNIQUE INDEX "review_replies_reviewId_key" ON "review_replies"("reviewId");
 
 -- CreateIndex
+CREATE UNIQUE INDEX "questions_questionNumber_key" ON "questions"("questionNumber");
+
+-- CreateIndex
 CREATE INDEX "questions_serviceSlug_idx" ON "questions"("serviceSlug");
 
 -- CreateIndex
@@ -471,6 +507,9 @@ ALTER TABLE "portfolio_items" ADD CONSTRAINT "portfolio_items_tradespersonProfil
 
 -- AddForeignKey
 ALTER TABLE "message_templates" ADD CONSTRAINT "message_templates_tradespersonProfileId_fkey" FOREIGN KEY ("tradespersonProfileId") REFERENCES "tradesperson_profiles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
+
+-- AddForeignKey
+ALTER TABLE "profile_documents" ADD CONSTRAINT "profile_documents_tradespersonProfileId_fkey" FOREIGN KEY ("tradespersonProfileId") REFERENCES "tradesperson_profiles"("id") ON DELETE CASCADE ON UPDATE CASCADE;
 
 -- AddForeignKey
 ALTER TABLE "jobs" ADD CONSTRAINT "jobs_homeownerId_fkey" FOREIGN KEY ("homeownerId") REFERENCES "users"("id") ON DELETE CASCADE ON UPDATE CASCADE;

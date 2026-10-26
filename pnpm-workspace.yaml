@@ -1,8 +1,7 @@
-ignoredBuiltDependencies:
-  - '@nestjs/core'
-  - esbuild
-  - prisma
-  - unrs-resolver
-
-onlyBuiltDependencies:
-  - '@prisma/engines'
+# Dependency build scripts pnpm may run (pnpm 11 refuses unlisted ones).
+allowBuilds:
+  '@prisma/engines': true
+  prisma: true
+  esbuild: true
+  '@nestjs/core': false
+  unrs-resolver: false
