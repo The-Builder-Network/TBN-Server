@@ -3,18 +3,18 @@ import {
   UnauthorizedException,
   BadRequestException,
   ConflictException,
-  Logger,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as bcrypt from 'bcryptjs';
 import { randomBytes } from 'crypto';
-import { Resend } from 'resend';
+import type { User } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { MailService } from '../../common/mail.service.js';
+import { CreditsService, WELCOME_CREDITS } from '../credits/credits.service.js';
 import type { RegisterDto } from './dto/register.dto.js';
 import type { LoginDto } from './dto/login.dto.js';
-import { $Enums } from '@prisma/client';
-import { handlePrismaError } from '../../common/prisma-error.helper.js';
 
 export interface JwtPayload {
   sub: string;
@@ -22,46 +22,44 @@ export interface JwtPayload {
   role: string;
 }
 
+const EMAIL_VERIFY_TTL_MS = 48 * 60 * 60 * 1000;
+const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
+// Compared against when the email is unknown, so login timing doesn't reveal which emails exist.
+const DUMMY_HASH = bcrypt.hashSync('timing-equaliser', 12);
+
 @Injectable()
 export class AuthService {
-  private readonly logger = new Logger(AuthService.name);
-  private readonly resend: Resend | null;
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
-  ) {
-    const apiKey = config.get<string>('RESEND_API_KEY');
-    this.resend = apiKey ? new Resend(apiKey) : null;
-  }
+    private readonly mail: MailService,
+    private readonly credits: CreditsService,
+  ) {}
 
-  // ── Token helpers ────────────────────────────────────────────
+  // ── Tokens ──────────────────────────────────────────────────
 
-  private signTokens(userId: string, email: string, role: string) {
+  signTokens(user: Pick<User, 'id' | 'email' | 'role' | 'tokenVersion'>) {
     const secret = this.config.get<string>('JWT_SECRET')!;
     const accessToken = this.jwt.sign(
-      { sub: userId, email, role },
+      { sub: user.id, email: user.email, role: user.role },
       { secret, expiresIn: '15m' },
     );
     const refreshToken = this.jwt.sign(
-      { sub: userId, type: 'refresh' },
+      { sub: user.id, type: 'refresh', tv: user.tokenVersion },
       { secret, expiresIn: '7d' },
     );
     return { accessToken, refreshToken };
   }
 
-  private formatUser(user: {
-    id: string;
-    email: string;
-    role: string;
-    name: string;
-    username: string | null;
-    phone: string | null;
-    avatarUrl: string | null;
-    emailVerified: boolean;
-    createdAt: Date;
-  }) {
+  async formatUser(user: User) {
+    const profile =
+      user.role === 'TRADESPERSON'
+        ? await this.prisma.tradespersonProfile.findUnique({
+            where: { userId: user.id },
+            select: { verificationStatus: true },
+          })
+        : null;
     return {
       id: user.id,
       email: user.email,
@@ -71,147 +69,202 @@ export class AuthService {
       phone: user.phone,
       avatarUrl: user.avatarUrl,
       emailVerified: user.emailVerified,
+      marketingOptIn: user.marketingOptIn,
+      notificationsPaused: user.notificationsPaused,
+      verificationStatus: profile?.verificationStatus ?? null,
       createdAt: user.createdAt,
     };
   }
 
   private async generateUsername(name: string): Promise<string> {
-    const base = name.toLowerCase().replace(/[^a-z0-9]/g, '') || 'user';
-    const existing = await this.prisma.user.findUnique({
-      where: { username: base },
-    });
-    if (!existing) return base;
-    let n = 2;
-    while (true) {
-      const candidate = `${base}${n}`;
-      const check = await this.prisma.user.findUnique({
+    const base =
+      name
+        .toLowerCase()
+        .replace(/[^a-z0-9]/g, '')
+        .slice(0, 30) || 'user';
+    for (let n = 1; n < 1000; n++) {
+      const candidate = n === 1 ? base : `${base}${n}`;
+      const taken = await this.prisma.user.findUnique({
         where: { username: candidate },
       });
-      if (!check) return candidate;
-      n++;
+      if (!taken) return candidate;
     }
+    return `${base}${randomBytes(3).toString('hex')}`;
   }
 
-  // ── Register ─────────────────────────────────────────────────
+  // ── Register ────────────────────────────────────────────────
 
   async register(dto: RegisterDto) {
     const existing = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (existing) {
-      throw new ConflictException('Email already in use');
-    }
+    if (existing)
+      throw new ConflictException('An account with this email already exists');
 
     const passwordHash = await bcrypt.hash(dto.password, 12);
     const emailVerifyToken = randomBytes(32).toString('hex');
     const username = await this.generateUsername(dto.name);
+    const isTrade = dto.role === 'TRADESPERSON';
 
-    const user = await this.prisma.user
-      .create({
+    const user = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.user.create({
         data: {
           email: dto.email,
           passwordHash,
           name: dto.name,
           username,
           phone: dto.phone,
-          role: dto.role as $Enums.UserRole,
+          role: dto.role,
           emailVerifyToken,
-          ...(dto.role === 'TRADESPERSON'
-            ? {
-                tradespersonProfile: {
-                  create: { username },
-                },
-                leadCredit: {
-                  create: { balance: 0 },
-                },
-              }
-            : {}),
+          emailVerifyExpiry: new Date(Date.now() + EMAIL_VERIFY_TTL_MS),
+          marketingOptIn: dto.marketingOptIn ?? false,
+          marketingOptInAt: dto.marketingOptIn ? new Date() : null,
+          ...(isTrade ? { tradespersonProfile: { create: { username } } } : {}),
         },
-      })
-      .catch(handlePrismaError);
+      });
+      if (isTrade && WELCOME_CREDITS > 0) {
+        await this.credits.grant(
+          tx,
+          created.id,
+          WELCOME_CREDITS,
+          'WELCOME_BONUS',
+          {
+            note: 'Welcome credits',
+          },
+        );
+      }
+      return created;
+    });
 
-    // Send verification email (fire-and-forget)
-    void this.sendVerificationEmail(user.email, emailVerifyToken);
+    void this.sendVerificationEmail(user.email, user.name, emailVerifyToken);
 
-    const tokens = this.signTokens(user.id, user.email, user.role);
-    return { user: this.formatUser(user), ...tokens };
+    return { user: await this.formatUser(user), ...this.signTokens(user) };
   }
 
-  // ── Login ────────────────────────────────────────────────────
+  // ── Login / refresh / me ────────────────────────────────────
 
   async login(dto: LoginDto) {
     const user = await this.prisma.user.findUnique({
       where: { email: dto.email },
     });
-    if (!user) {
+    const valid = await bcrypt.compare(
+      dto.password,
+      user?.passwordHash ?? DUMMY_HASH,
+    );
+    if (!user || !valid || user.accountStatus === 'DELETED') {
       throw new UnauthorizedException('Invalid email or password');
     }
+    this.assertNotSuspended(user);
 
-    const valid = await bcrypt.compare(dto.password, user.passwordHash);
-    if (!valid) {
-      throw new UnauthorizedException('Invalid email or password');
-    }
-
-    const tokens = this.signTokens(user.id, user.email, user.role);
-    return { user: this.formatUser(user), ...tokens };
+    const updated = await this.prisma.user.update({
+      where: { id: user.id },
+      data: { lastLoginAt: new Date() },
+    });
+    return {
+      user: await this.formatUser(updated),
+      ...this.signTokens(updated),
+    };
   }
-
-  // ── Refresh ──────────────────────────────────────────────────
 
   async refresh(refreshToken: string) {
     const secret = this.config.get<string>('JWT_SECRET')!;
-    let payload: { sub: string; type?: string };
+    let payload: { sub: string; type?: string; tv?: number };
     try {
       payload = this.jwt.verify(refreshToken, { secret });
     } catch {
       throw new UnauthorizedException('Invalid or expired refresh token');
     }
-
-    if (payload.type !== 'refresh') {
+    if (payload.type !== 'refresh')
       throw new UnauthorizedException('Invalid token type');
-    }
 
     const user = await this.prisma.user.findUnique({
       where: { id: payload.sub },
     });
-    if (!user) {
-      throw new UnauthorizedException('User not found');
+    if (
+      !user ||
+      user.accountStatus !== 'ACTIVE' ||
+      (payload.tv ?? 0) !== user.tokenVersion
+    ) {
+      throw new UnauthorizedException('Session expired, please log in again');
     }
-
-    return this.signTokens(user.id, user.email, user.role);
+    return this.signTokens(user);
   }
-
-  // ── Me ───────────────────────────────────────────────────────
 
   async getMe(userId: string) {
     const user = await this.prisma.user.findUnique({ where: { id: userId } });
-    if (!user) throw new UnauthorizedException();
+    if (!user || user.accountStatus === 'DELETED')
+      throw new UnauthorizedException();
+    this.assertNotSuspended(user);
     return this.formatUser(user);
   }
 
-  // ── Forgot Password ──────────────────────────────────────────
-
-  async forgotPassword(email: string) {
-    const user = await this.prisma.user.findUnique({ where: { email } });
-    // Always return same message to prevent email enumeration
-    if (!user) {
-      return { message: 'If that email exists, a reset link has been sent.' };
+  private assertNotSuspended(user: User) {
+    if (user.accountStatus === 'SUSPENDED') {
+      throw new ForbiddenException(
+        'Your account has been suspended. Please contact support@thebuildernetwork.com.',
+      );
     }
-
-    const token = randomBytes(32).toString('hex');
-    const expiry = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-
-    await this.prisma.user.update({
-      where: { id: user.id },
-      data: { passwordResetToken: token, passwordResetExpiry: expiry },
-    });
-
-    void this.sendPasswordResetEmail(user.email, token);
-
-    return { message: 'If that email exists, a reset link has been sent.' };
   }
 
-  // ── Reset Password ───────────────────────────────────────────
+  // ── Passwords ───────────────────────────────────────────────
+
+  async changePassword(
+    userId: string,
+    currentPassword: string,
+    newPassword: string,
+  ) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException();
+    if (!(await bcrypt.compare(currentPassword, user.passwordHash))) {
+      throw new BadRequestException('Your current password is incorrect');
+    }
+    if (currentPassword === newPassword) {
+      throw new BadRequestException(
+        'Choose a password you have not used for this account',
+      );
+    }
+    // Bumping tokenVersion signs out every other device; this one gets fresh tokens.
+    const updated = await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        passwordHash: await bcrypt.hash(newPassword, 12),
+        tokenVersion: { increment: 1 },
+      },
+    });
+    return { message: 'Password updated.', ...this.signTokens(updated) };
+  }
+
+  async forgotPassword(email: string) {
+    const generic = {
+      message: 'If that email exists, a reset link has been sent.',
+    };
+    const user = await this.prisma.user.findUnique({ where: { email } });
+    if (!user || user.accountStatus !== 'ACTIVE') return generic;
+
+    const token = randomBytes(32).toString('hex');
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: token,
+        passwordResetExpiry: new Date(Date.now() + PASSWORD_RESET_TTL_MS),
+      },
+    });
+    void this.mail.send({
+      to: user.email,
+      subject: 'Reset your Builder Network password',
+      heading: 'Reset your password',
+      paragraphs: [
+        `Hi ${user.name},`,
+        'We received a request to reset your password. This link expires in 1 hour.',
+        "If you didn't ask for this, you can ignore this email.",
+      ],
+      cta: {
+        label: 'Reset password',
+        url: this.mail.link(`/reset-password?token=${token}`),
+      },
+    });
+    return generic;
+  }
 
   async resetPassword(token: string, newPassword: string) {
     const user = await this.prisma.user.findFirst({
@@ -220,84 +273,96 @@ export class AuthService {
         passwordResetExpiry: { gt: new Date() },
       },
     });
-    if (!user) {
-      throw new BadRequestException('Invalid or expired reset token');
-    }
+    if (!user)
+      throw new BadRequestException(
+        'This reset link is invalid or has expired',
+      );
 
-    const passwordHash = await bcrypt.hash(newPassword, 12);
     await this.prisma.user.update({
       where: { id: user.id },
       data: {
-        passwordHash,
+        passwordHash: await bcrypt.hash(newPassword, 12),
         passwordResetToken: null,
         passwordResetExpiry: null,
+        tokenVersion: { increment: 1 },
       },
     });
-
-    return { message: 'Password updated.' };
+    return { message: 'Password updated. Please log in.' };
   }
 
-  // ── Verify Email ─────────────────────────────────────────────
+  // ── Email verification ──────────────────────────────────────
 
   async verifyEmail(token: string) {
     const user = await this.prisma.user.findFirst({
       where: { emailVerifyToken: token },
     });
-    if (!user) {
-      throw new BadRequestException('Invalid verification token');
+    if (!user)
+      throw new BadRequestException('This verification link is invalid');
+    if (user.emailVerifyExpiry && user.emailVerifyExpiry < new Date()) {
+      throw new BadRequestException(
+        'This verification link has expired. Request a new one.',
+      );
     }
-
     await this.prisma.user.update({
       where: { id: user.id },
-      data: { emailVerified: true, emailVerifyToken: null },
+      data: {
+        emailVerified: true,
+        emailVerifyToken: null,
+        emailVerifyExpiry: null,
+      },
     });
-
     return { message: 'Email verified.' };
   }
 
-  // ── Check Email ──────────────────────────────────────────────
+  async resendVerification(userId: string) {
+    const user = await this.prisma.user.findUnique({ where: { id: userId } });
+    if (!user) throw new UnauthorizedException();
+    if (user.emailVerified)
+      return { message: 'Your email is already verified.' };
+
+    const token = randomBytes(32).toString('hex');
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        emailVerifyToken: token,
+        emailVerifyExpiry: new Date(Date.now() + EMAIL_VERIFY_TTL_MS),
+      },
+    });
+    void this.sendVerificationEmail(user.email, user.name, token);
+    return { message: 'Verification email sent.' };
+  }
+
+  private sendVerificationEmail(email: string, name: string, token: string) {
+    return this.mail.send({
+      to: email,
+      subject: 'Verify your Builder Network email',
+      heading: 'Confirm your email address',
+      paragraphs: [
+        `Hi ${name},`,
+        'Please confirm your email address to finish setting up your account.',
+      ],
+      cta: {
+        label: 'Verify email',
+        url: this.mail.link(`/verify-email?token=${token}`),
+      },
+    });
+  }
+
+  // ── Availability checks (sign-up forms) ─────────────────────
 
   async checkEmail(email: string): Promise<{ exists: boolean }> {
-    const user = await this.prisma.user.findUnique({ where: { email } });
+    const user = await this.prisma.user.findUnique({
+      where: { email },
+      select: { id: true },
+    });
     return { exists: !!user };
   }
-
-  // ── Check Phone ──────────────────────────────────────────────
 
   async checkPhone(phone: string): Promise<{ exists: boolean }> {
-    const user = await this.prisma.user.findFirst({ where: { phone } });
+    const user = await this.prisma.user.findFirst({
+      where: { phone, accountStatus: { not: 'DELETED' } },
+      select: { id: true },
+    });
     return { exists: !!user };
-  }
-
-  // ── Email helpers ────────────────────────────────────────────
-
-  private async sendVerificationEmail(email: string, token: string) {
-    if (!this.resend) return;
-    const url = `${this.config.get('FRONTEND_URL')}/verify-email?token=${token}`;
-    try {
-      await this.resend.emails.send({
-        from: 'noreply@buildernetwork.co.uk',
-        to: email,
-        subject: 'Verify your Builder Network email',
-        html: `<p>Click <a href="${url}">here</a> to verify your email.</p>`,
-      });
-    } catch (err) {
-      this.logger.error('Failed to send verification email:', err);
-    }
-  }
-
-  private async sendPasswordResetEmail(email: string, token: string) {
-    if (!this.resend) return;
-    const url = `${this.config.get('FRONTEND_URL')}/reset-password?token=${token}`;
-    try {
-      await this.resend.emails.send({
-        from: 'noreply@buildernetwork.co.uk',
-        to: email,
-        subject: 'Reset your Builder Network password',
-        html: `<p>Click <a href="${url}">here</a> to reset your password. This link expires in 1 hour.</p>`,
-      });
-    } catch (err) {
-      this.logger.error('Failed to send reset email:', err);
-    }
   }
 }

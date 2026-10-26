@@ -1,31 +1,30 @@
-import { IsBoolean, IsIn, IsInt, IsOptional, Min } from 'class-validator';
-import { Type } from 'class-transformer';
+import { IsIn, IsInt, IsOptional, Max, Min } from 'class-validator';
+import { Transform } from 'class-transformer';
 import { CREDIT_PACKS } from '../stripe.service.js';
+import { toInt } from '../../../common/transforms.js';
 
 const VALID_CREDIT_AMOUNTS = CREDIT_PACKS.map((p) => p.credits);
 
 export class CreateCheckoutDto {
-  @Type(() => Number)
+  @Transform(toInt)
   @IsInt()
   @IsIn(VALID_CREDIT_AMOUNTS, {
     message: `creditAmount must be one of: ${VALID_CREDIT_AMOUNTS.join(', ')}`,
   })
-  creditAmount: number;
+  creditAmount!: number;
 }
 
-export class UpdateAutoTopupDto {
-  @IsBoolean()
-  enabled: boolean;
-
+export class PageQueryDto {
   @IsOptional()
-  @Type(() => Number)
+  @Transform(toInt)
   @IsInt()
   @Min(1)
-  topupAmount?: number;
+  page?: number = 1;
 
   @IsOptional()
-  @Type(() => Number)
+  @Transform(toInt)
   @IsInt()
-  @Min(0)
-  topupThreshold?: number;
+  @Min(1)
+  @Max(50)
+  perPage?: number = 20;
 }

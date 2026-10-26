@@ -12,7 +12,6 @@ export class OptionalJwtAuthGuard extends AuthGuard('jwt') {
     return super.canActivate(context);
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   handleRequest<TUser = any>(_err: any, user: TUser): TUser {
     // Return user if present, null otherwise — never throw
     return user;

@@ -3,7 +3,6 @@ import {
   WebSocketServer,
   SubscribeMessage,
   OnGatewayConnection,
-  OnGatewayDisconnect,
   MessageBody,
   ConnectedSocket,
 } from '@nestjs/websockets';
@@ -12,18 +11,25 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import type { JwtPayload } from '../auth/auth.service.js';
+import { allowedOrigins } from '../../common/cors.js';
+import { authenticateSocket } from '../../common/socket-auth.js';
 
 interface AuthenticatedSocket extends Socket {
   user?: JwtPayload;
 }
 
+const room = (conversationId: string) => `conversation:${conversationId}`;
+
+/**
+ * Realtime chat delivery. Messages are *sent* over REST (which persists,
+ * notifies and then broadcasts here); sockets only receive events and relay
+ * typing indicators between conversation members.
+ */
 @WebSocketGateway({
   namespace: '/ws/chat',
-  cors: { origin: '*', credentials: true },
+  cors: { origin: allowedOrigins(), credentials: true },
 })
-export class ChatGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
-{
+export class ChatGateway implements OnGatewayConnection {
   @WebSocketServer()
   server: Server;
 
@@ -33,118 +39,72 @@ export class ChatGateway
     private readonly prisma: PrismaService,
   ) {}
 
-  // ── Auth handshake ─────────────────────────────────────────────────────────
-
-  async handleConnection(client: AuthenticatedSocket) {
-    const token =
-      (client.handshake.auth?.token as string | undefined) ??
-      (client.handshake.query?.token as string | undefined);
-
-    if (!token) {
+  handleConnection(client: AuthenticatedSocket) {
+    const user = authenticateSocket(
+      client,
+      this.jwt,
+      this.config.get<string>('JWT_SECRET')!,
+    );
+    if (!user) {
       client.disconnect();
       return;
     }
-
-    try {
-      const secret = this.config.get<string>('JWT_SECRET')!;
-      const payload = this.jwt.verify<JwtPayload>(token, { secret });
-      client.user = payload;
-      // Join personal notification room
-      void client.join(`user:${payload.sub}`);
-    } catch {
-      client.disconnect();
-    }
+    client.user = user;
+    void client.join(`user:${user.sub}`);
   }
-
-  handleDisconnect(_client: AuthenticatedSocket) {
-    // cleanup handled by socket.io automatically
-  }
-
-  // ── join_conversation ──────────────────────────────────────────────────────
 
   @SubscribeMessage('join_conversation')
   async handleJoinConversation(
     @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() data: { conversationId: string },
+    @MessageBody() data: { conversationId?: string },
   ) {
-    if (!client.user) return;
-
-    // Verify the user is a participant
+    if (!client.user || typeof data?.conversationId !== 'string')
+      return { ok: false };
     const conversation = await this.prisma.conversation.findUnique({
       where: { id: data.conversationId },
+      select: { homeownerId: true, tradespersonId: true },
     });
-
     if (
       !conversation ||
       (conversation.homeownerId !== client.user.sub &&
         conversation.tradespersonId !== client.user.sub)
     ) {
-      return;
+      return { ok: false };
     }
-
-    void client.join(`conversation:${data.conversationId}`);
+    await client.join(room(data.conversationId));
+    return { ok: true };
   }
 
-  // ── send_message ───────────────────────────────────────────────────────────
-
-  @SubscribeMessage('send_message')
-  async handleSendMessage(
+  @SubscribeMessage('leave_conversation')
+  async handleLeave(
     @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() data: { conversationId: string; body: string },
+    @MessageBody() data: { conversationId?: string },
   ) {
-    if (!client.user) return;
-    if (!data.body || data.body.trim().length === 0) return;
-    if (data.body.length > 2000) return;
-
-    const conversation = await this.prisma.conversation.findUnique({
-      where: { id: data.conversationId },
-    });
-
-    if (
-      !conversation ||
-      (conversation.homeownerId !== client.user.sub &&
-        conversation.tradespersonId !== client.user.sub)
-    ) {
-      return;
-    }
-
-    const message = await this.prisma.message.create({
-      data: {
-        conversationId: data.conversationId,
-        senderId: client.user.sub,
-        body: data.body.trim(),
-      },
-    });
-
-    await this.prisma.conversation.update({
-      where: { id: data.conversationId },
-      data: { updatedAt: new Date() },
-    });
-
-    const payload = {
-      id: message.id,
-      conversationId: data.conversationId,
-      senderId: message.senderId,
-      body: message.body,
-      readAt: null,
-      createdAt: message.createdAt.toISOString(),
-    };
-
-    this.server
-      .to(`conversation:${data.conversationId}`)
-      .emit('new_message', payload);
+    if (typeof data?.conversationId === 'string')
+      await client.leave(room(data.conversationId));
   }
-
-  // ── typing ─────────────────────────────────────────────────────────────────
 
   @SubscribeMessage('typing')
-  async handleTyping(
+  handleTyping(
     @ConnectedSocket() client: AuthenticatedSocket,
-    @MessageBody() data: { conversationId: string },
+    @MessageBody() data: { conversationId?: string },
   ) {
-    if (!client.user) return;
-    client
-      .to(`conversation:${data.conversationId}`)
-      .emit('typing', { userId: client.user.sub });
+    if (!client.user || typeof data?.conversationId !== 'string') return;
+    const r = room(data.conversationId);
+    if (!client.rooms.has(r)) return; // only members who joined may signal typing
+    client.to(r).emit('typing', {
+      conversationId: data.conversationId,
+      userId: client.user.sub,
+    });
+  }
+
+  emitMessage(conversationId: string, message: Record<string, unknown>) {
+    this.server?.to(room(conversationId)).emit('new_message', message);
+  }
+
+  emitRead(conversationId: string, readerId: string) {
+    this.server
+      ?.to(room(conversationId))
+      .emit('messages_read', { conversationId, readerId });
   }
 }

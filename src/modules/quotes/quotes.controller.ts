@@ -5,7 +5,7 @@ import {
   Param,
   Body,
   UseGuards,
-  ValidationPipe,
+  ForbiddenException,
 } from '@nestjs/common';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
@@ -23,28 +23,27 @@ export class QuotesController {
   /** GET /jobs/:jobId/quotes — homeowner sees all quotes for their job */
   @Get('jobs/:jobId/quotes')
   @Roles('HOMEOWNER')
-  async getQuotesForJob(
+  getQuotesForJob(
     @Param('jobId') jobId: string,
     @CurrentUser() user: JwtPayload,
   ) {
     return this.quotesService.getQuotesForJob(jobId, user.sub);
   }
 
-  /** PATCH /quotes/:id — accept, decline, or withdraw */
+  /** PATCH /quotes/:id — homeowner accepts (= hire) / declines; trade withdraws */
   @Patch('quotes/:id')
-  async updateQuoteStatus(
+  updateQuoteStatus(
     @Param('id') id: string,
     @CurrentUser() user: JwtPayload,
-    @Body(new ValidationPipe({ transform: true, whitelist: true }))
-    dto: UpdateQuoteStatusDto,
+    @Body() dto: UpdateQuoteStatusDto,
   ) {
-    switch (dto.status) {
-      case 'ACCEPTED':
-        return this.quotesService.acceptQuote(id, user.sub);
-      case 'DECLINED':
-        return this.quotesService.declineQuote(id, user.sub);
-      case 'WITHDRAWN':
-        return this.quotesService.withdrawQuote(id, user.sub);
+    if (dto.status === 'WITHDRAWN') {
+      if (user.role !== 'TRADESPERSON') throw new ForbiddenException();
+      return this.quotesService.withdrawQuote(id, user.sub);
     }
+    if (user.role !== 'HOMEOWNER') throw new ForbiddenException();
+    return dto.status === 'ACCEPTED'
+      ? this.quotesService.acceptQuote(id, user.sub)
+      : this.quotesService.declineQuote(id, user.sub);
   }
 }

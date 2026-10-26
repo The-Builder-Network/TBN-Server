@@ -12,7 +12,6 @@ import {
   ParseFilePipeBuilder,
   HttpCode,
   HttpStatus,
-  ValidationPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -27,7 +26,12 @@ import { AddServiceDto } from './dto/add-service.dto.js';
 import { AddQualificationDto } from './dto/add-qualification.dto.js';
 import { CreateMessageTemplateDto } from './dto/create-message-template.dto.js';
 import { UpdateMessageTemplateDto } from './dto/update-message-template.dto.js';
-import { UpdateUserDto } from './dto/update-user.dto.js';
+import {
+  DeleteAccountDto,
+  NotificationsPausedDto,
+  UpdateUserDto,
+} from './dto/update-user.dto.js';
+import { OptionalJwtAuthGuard } from '../auth/guards/optional-jwt-auth.guard.js';
 
 @Controller('api/v1/users')
 export class UsersController {
@@ -36,8 +40,12 @@ export class UsersController {
   // ── PUBLIC: tradesperson public profile ──────────────────────────────────
 
   @Get(':username')
-  async getPublicProfile(@Param('username') username: string) {
-    return this.usersService.getPublicProfile(username);
+  @UseGuards(OptionalJwtAuthGuard)
+  async getPublicProfile(
+    @Param('username') username: string,
+    @CurrentUser() user?: JwtPayload,
+  ) {
+    return this.usersService.getPublicProfile(username, user?.sub);
   }
 
   // ── TRADESPERSON: own profile ─────────────────────────────────────────────
@@ -54,8 +62,7 @@ export class UsersController {
   @Roles('TRADESPERSON')
   async updateMyProfile(
     @CurrentUser() user: JwtPayload,
-    @Body(new ValidationPipe({ transform: true, whitelist: true }))
-    dto: UpdateProfileDto,
+    @Body() dto: UpdateProfileDto,
   ) {
     return this.usersService.updateMyProfile(user.sub, dto);
   }
@@ -66,10 +73,39 @@ export class UsersController {
   @UseGuards(JwtAuthGuard)
   async updateUser(
     @CurrentUser() user: JwtPayload,
-    @Body(new ValidationPipe({ transform: true, whitelist: true }))
-    dto: UpdateUserDto,
+    @Body() dto: UpdateUserDto,
   ) {
     return this.usersService.updateUser(user.sub, dto);
+  }
+
+  @Patch('me/notifications')
+  @UseGuards(JwtAuthGuard)
+  async setNotificationsPaused(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: NotificationsPausedDto,
+  ) {
+    return this.usersService.setNotificationsPaused(user.sub, dto.paused);
+  }
+
+  /** Delete (anonymise) the signed-in account. Requires the current password. */
+  @Post('me/delete')
+  @UseGuards(JwtAuthGuard)
+  @HttpCode(HttpStatus.OK)
+  async deleteAccount(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: DeleteAccountDto,
+  ) {
+    return this.usersService.deleteAccount(user.sub, dto.password);
+  }
+
+  // ── VERIFICATION ──────────────────────────────────────────────────────────
+
+  @Post('me/verification/submit')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRADESPERSON')
+  @HttpCode(HttpStatus.OK)
+  async submitForVerification(@CurrentUser() user: JwtPayload) {
+    return this.usersService.submitForVerification(user.sub);
   }
 
   // ── AVATAR ────────────────────────────────────────────────────────────────
@@ -131,9 +167,9 @@ export class UsersController {
   @Post('me/leads/refresh')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('TRADESPERSON')
-  @HttpCode(HttpStatus.NO_CONTENT)
+  @HttpCode(HttpStatus.OK)
   async refreshLeads(@CurrentUser() user: JwtPayload) {
-    await this.usersService.refreshLeads(user.sub);
+    return this.usersService.refreshLeads(user.sub);
   }
 
   @Post('me/services')
@@ -142,8 +178,7 @@ export class UsersController {
   @HttpCode(HttpStatus.CREATED)
   async addService(
     @CurrentUser() user: JwtPayload,
-    @Body(new ValidationPipe({ transform: true, whitelist: true }))
-    dto: AddServiceDto,
+    @Body() dto: AddServiceDto,
   ) {
     return this.usersService.addService(user.sub, dto);
   }
@@ -167,8 +202,7 @@ export class UsersController {
   @HttpCode(HttpStatus.CREATED)
   async addQualification(
     @CurrentUser() user: JwtPayload,
-    @Body(new ValidationPipe({ transform: true, whitelist: true }))
-    dto: AddQualificationDto,
+    @Body() dto: AddQualificationDto,
   ) {
     return this.usersService.addQualification(user.sub, dto);
   }
@@ -234,8 +268,7 @@ export class UsersController {
   @HttpCode(HttpStatus.CREATED)
   async createMessageTemplate(
     @CurrentUser() user: JwtPayload,
-    @Body(new ValidationPipe({ transform: true, whitelist: true }))
-    dto: CreateMessageTemplateDto,
+    @Body() dto: CreateMessageTemplateDto,
   ) {
     return this.usersService.createMessageTemplate(user.sub, dto);
   }
@@ -246,8 +279,7 @@ export class UsersController {
   async updateMessageTemplate(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
-    @Body(new ValidationPipe({ transform: true, whitelist: true }))
-    dto: UpdateMessageTemplateDto,
+    @Body() dto: UpdateMessageTemplateDto,
   ) {
     return this.usersService.updateMessageTemplate(user.sub, id, dto);
   }

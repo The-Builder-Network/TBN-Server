@@ -1,4 +1,4 @@
-import { Controller, Get, Query, ValidationPipe } from '@nestjs/common';
+import { Controller, Get, Query } from '@nestjs/common';
 import { SearchService } from './search.service.js';
 import { SearchTradespeopleQueryDto } from './dto/search-tradespeople-query.dto.js';
 
@@ -8,7 +8,7 @@ export class SearchController {
 
   @Get('tradespeople')
   async searchTradespeople(
-    @Query(new ValidationPipe({ transform: true, whitelist: true }))
+    @Query()
     query: SearchTradespeopleQueryDto,
   ) {
     return this.searchService.searchTradespeople(query);

@@ -504,13 +504,47 @@ const trades = [
   },
 ];
 
+// Lead fee (credits charged on shortlist), scaled to typical job value. Default 10.
+const leadFees: Record<string, number> = {
+  'cleaning-services': 3,
+  handyman: 4,
+  locksmith: 4,
+  'gardening-landscaping': 5,
+  'moving-services': 5,
+  'tree-surgery': 6,
+  fencing: 6,
+  'painting-decorating': 7,
+  'carpets-lino-flooring': 7,
+  'fascias-soffits-guttering': 7,
+  tiling: 8,
+  'plastering-rendering': 8,
+  'carpentry-joinery': 8,
+  'damp-proofing': 8,
+  'security-systems': 8,
+  insulation: 8,
+  'chimney-fireplace': 8,
+  roofing: 12,
+  'central-heating': 12,
+  'bathroom-fitting': 12,
+  'kitchen-fitting': 12,
+  'driveways-paving': 12,
+  'groundwork-foundations': 15,
+  conservatories: 15,
+  'restoration-refurbishment': 15,
+  'architectural-services': 15,
+  conversions: 18,
+  'loft-conversion': 20,
+  extensions: 22,
+  'new-build': 25,
+};
+
 async function main() {
   console.log('Seeding services...');
   for (const svc of services) {
     await prisma.service.upsert({
       where: { slug: svc.slug },
-      update: { name: svc.name, imageUrl: svc.imageUrl },
-      create: svc,
+      update: { name: svc.name, imageUrl: svc.imageUrl, leadFeeCredits: leadFees[svc.slug] ?? 10 },
+      create: { ...svc, leadFeeCredits: leadFees[svc.slug] ?? 10 },
     });
   }
   console.log(`✓ ${services.length} services seeded`);

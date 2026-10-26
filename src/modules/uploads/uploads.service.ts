@@ -9,7 +9,9 @@ import {
   S3Client,
   PutObjectCommand,
   DeleteObjectCommand,
+  GetObjectCommand,
 } from '@aws-sdk/client-s3';
+import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
 import { randomUUID } from 'crypto';
 import * as path from 'path';
 import { URL } from 'url';
@@ -89,7 +91,10 @@ export class UploadsService {
     // Validate magic bytes before uploading
     validateMagicBytes(fileBuffer, mimeType);
 
-    const ext = path.extname(originalName).toLowerCase();
+    const ext = path
+      .extname(originalName)
+      .toLowerCase()
+      .replace(/[^.a-z0-9]/g, '');
     const key = `${folder}/${randomUUID()}${ext}`;
 
     try {
@@ -108,6 +113,62 @@ export class UploadsService {
     }
 
     return `${this.cdnUrl}/${key}`;
+  }
+
+  /**
+   * Upload a sensitive file (e.g. ID documents) under the `private/` prefix.
+   * Returns the S3 key only — never a public URL. Read it back with presignedUrl().
+   * Infra note: the CloudFront distribution must not serve the `private/*` path.
+   */
+  async uploadPrivate(
+    fileBuffer: Buffer,
+    originalName: string,
+    mimeType: string,
+    folder: string,
+  ): Promise<string> {
+    validateMagicBytes(fileBuffer, mimeType);
+    const ext = path
+      .extname(originalName)
+      .toLowerCase()
+      .replace(/[^.a-z0-9]/g, '');
+    const key = `private/${folder}/${randomUUID()}${ext}`;
+    try {
+      await this.s3.send(
+        new PutObjectCommand({
+          Bucket: this.bucket,
+          Key: key,
+          Body: fileBuffer,
+          ContentType: mimeType,
+          ContentDisposition: 'inline',
+        }),
+      );
+    } catch (err) {
+      throw new InternalServerErrorException(
+        `Failed to upload file: ${(err as Error).message}`,
+      );
+    }
+    return key;
+  }
+
+  /** Short-lived (default 5 min) signed GET URL for a private object. */
+  presignedUrl(key: string, expiresInSeconds = 300): Promise<string> {
+    return getSignedUrl(
+      this.s3,
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      {
+        expiresIn: expiresInSeconds,
+      },
+    );
+  }
+
+  async deletePrivate(key: string): Promise<void> {
+    try {
+      await this.s3.send(
+        new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+    } catch (err) {
+      this.logger.error('S3 delete failed:', (err as Error).message);
+    }
   }
 
   /**

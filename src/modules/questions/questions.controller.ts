@@ -8,7 +8,6 @@ import {
   Body,
   Query,
   UseGuards,
-  ValidationPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -34,8 +33,7 @@ export class QuestionsController {
   @HttpCode(HttpStatus.CREATED)
   async createQuestion(
     @CurrentUser() user: JwtPayload,
-    @Body(new ValidationPipe({ transform: true, whitelist: true }))
-    dto: CreateQuestionDto,
+    @Body() dto: CreateQuestionDto,
   ) {
     return this.questionsService.createQuestion(user.sub, dto);
   }
@@ -45,8 +43,7 @@ export class QuestionsController {
   @Get('questions')
   @UseGuards(OptionalJwtAuthGuard)
   async getQuestions(
-    @Query(new ValidationPipe({ transform: true, whitelist: true }))
-    query: GetQuestionsQueryDto,
+    @Query() query: GetQuestionsQueryDto,
     @CurrentUser() user?: JwtPayload,
   ) {
     // Support ?mine=true to filter by current user's questions
@@ -75,8 +72,7 @@ export class QuestionsController {
   async createAnswer(
     @CurrentUser() user: JwtPayload,
     @Param('id') questionId: string,
-    @Body(new ValidationPipe({ transform: true, whitelist: true }))
-    dto: CreateAnswerDto,
+    @Body() dto: CreateAnswerDto,
   ) {
     return this.questionsService.createAnswer(questionId, user.sub, dto);
   }
@@ -114,7 +110,7 @@ export class QuestionsController {
   async editAnswer(
     @CurrentUser() user: JwtPayload,
     @Param('id') answerId: string,
-    @Body() dto: { body: string },
+    @Body() dto: CreateAnswerDto,
   ) {
     return this.questionsService.editAnswer(answerId, user.sub, dto.body);
   }

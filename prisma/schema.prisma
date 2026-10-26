@@ -16,23 +16,32 @@ enum UserRole {
   ADMIN
 }
 
-enum JobStatus {
-  DRAFT
+enum AccountStatus {
   ACTIVE
-  SHORTLISTING
-  IN_PROGRESS
-  COMPLETED
-  CANCELLED
-  CLOSED
+  SUSPENDED
+  DELETED
 }
 
+/// Job lifecycle (MyBuilder-style): open → hired → completed, or closed/expired without a hire.
+enum JobStatus {
+  ACTIVE
+  HIRED
+  COMPLETED
+  CLOSED
+  EXPIRED
+}
+
+/// Lead lifecycle for one tradesperson on one job.
+/// AVAILABLE → INTERESTED (credits reserved) → SHORTLISTED (credits charged) → HIRED
+/// INTERESTED → DECLINED (by homeowner) | WITHDRAWN (by trade) | NOT_SELECTED (job hired/closed) | EXPIRED
 enum LeadStatus {
   AVAILABLE
   INTERESTED
   SHORTLISTED
-  CONTACTED
   HIRED
-  REJECTED
+  DECLINED
+  WITHDRAWN
+  NOT_SELECTED
   EXPIRED
 }
 
@@ -56,118 +65,190 @@ enum PaymentStatus {
   REFUNDED
 }
 
-enum NotificationType {
-  NEW_LEAD
-  NEW_INTEREST
-  NEW_QUOTE
-  NEW_MESSAGE
-  NEW_REVIEW
-  JOB_COMPLETED
-  JOB_CANCELLED
-  LEAD_EXPIRED
-  CREDIT_LOW
-  CREDIT_TOPUP
-  ACCOUNT_VERIFIED
-  NEW_ANSWER
-  ANSWER_LIKED
+enum CreditTransactionType {
+  WELCOME_BONUS
+  PURCHASE
+  PURCHASE_REVERSAL
+  RESERVE
+  RELEASE
+  LEAD_FEE
+  ADMIN_CREDIT
+  ADMIN_DEBIT
 }
 
-enum VerificationStatus {
+enum CreditRequestReason {
+  CUSTOMER_UNREACHABLE
+  WRONG_WORK_TYPE
+  DUPLICATE_SHORTLIST
+  NOT_A_REAL_JOB
+  OTHER
+}
+
+enum CreditRequestStatus {
   PENDING
   APPROVED
   REJECTED
 }
 
+enum NotificationType {
+  NEW_LEAD
+  JOB_INVITE
+  NEW_INTEREST
+  INTEREST_DECLINED
+  SHORTLISTED
+  NOT_SELECTED
+  HIRED
+  NEW_QUOTE
+  QUOTE_ACCEPTED
+  NEW_MESSAGE
+  NEW_REVIEW
+  REVIEW_REQUESTED
+  JOB_COMPLETED
+  JOB_CANCELLED
+  JOB_CLOSED
+  LEAD_EXPIRED
+  CREDIT_LOW
+  CREDIT_TOPUP
+  CREDIT_REQUEST_RESOLVED
+  ACCOUNT_VERIFIED
+  VERIFICATION_REJECTED
+  VERIFICATION_INFO_REQUESTED
+  NEW_ANSWER
+  ANSWER_LIKED
+}
+
+/// NOT_SUBMITTED → PENDING (submitted for review) → APPROVED | REJECTED | INFO_REQUESTED.
+/// SUSPENDED is set by an admin after approval. Only APPROVED trades can act on leads.
+enum VerificationStatus {
+  NOT_SUBMITTED
+  PENDING
+  APPROVED
+  REJECTED
+  INFO_REQUESTED
+  SUSPENDED
+}
+
 // ─── Users ───────────────────────────────────────────────────
 
 model User {
-  id            String    @id @default(cuid())
-  email         String    @unique
-  passwordHash  String
-  role          UserRole
-  name          String
-  username      String?   @unique
-  phone         String?
-  avatarUrl     String?
-  emailVerified Boolean   @default(false)
-  passwordResetToken  String?   @unique
+  id                  String        @id @default(cuid())
+  email               String        @unique
+  passwordHash        String
+  role                UserRole
+  name                String
+  username            String?       @unique
+  phone               String?
+  avatarUrl           String?
+  emailVerified       Boolean       @default(false)
+  passwordResetToken  String?       @unique
   passwordResetExpiry DateTime?
-  emailVerifyToken    String?   @unique
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  emailVerifyToken    String?       @unique
+  emailVerifyExpiry   DateTime?
+  /// Bumped to revoke every refresh token (password change, delete, admin suspend).
+  tokenVersion        Int           @default(0)
+  accountStatus       AccountStatus @default(ACTIVE)
+  suspensionReason    String?
+  deletedAt           DateTime?
+  /// MyBuilder "pause notifications" option on the delete-account screen.
+  notificationsPaused Boolean       @default(false)
+  marketingOptIn      Boolean       @default(false)
+  marketingOptInAt    DateTime?
+  stripeCustomerId    String?       @unique
+  lastLoginAt         DateTime?
+  createdAt           DateTime      @default(now())
+  updatedAt           DateTime      @updatedAt
 
   // Relations
-  tradespersonProfile TradespersonProfile?
-  jobsPosted          Job[]                @relation("HomeownerJobs")
-  leads               Lead[]               @relation("TradespersonLeads")
-  quotesSent          Quote[]              @relation("TradespersonQuotes")
-  reviewsWritten      Review[]             @relation("ReviewAuthor")
-  reviewsReceived     Review[]             @relation("ReviewSubject")
-  reviewReplies       ReviewReply[]
-  conversationsAsHomeowner Conversation[]  @relation("HomeownerConversations")
-  conversationsAsTradesperson Conversation[] @relation("TradespersonConversations")
-  messagesSent        Message[]
-  questionsAsked      Question[]
-  answersGiven        Answer[]
-  answerLikes         AnswerLike[]
-  notifications       Notification[]
-  leadCredit          LeadCredit?
-  payments            Payment[]
+  tradespersonProfile         TradespersonProfile?
+  jobsPosted                  Job[]                @relation("HomeownerJobs")
+  jobsHired                   Job[]                @relation("HiredTradesperson")
+  leads                       Lead[]               @relation("TradespersonLeads")
+  quotesSent                  Quote[]              @relation("TradespersonQuotes")
+  reviewsWritten              Review[]             @relation("ReviewAuthor")
+  reviewsReceived             Review[]             @relation("ReviewSubject")
+  reviewReplies               ReviewReply[]
+  conversationsAsHomeowner    Conversation[]       @relation("HomeownerConversations")
+  conversationsAsTradesperson Conversation[]       @relation("TradespersonConversations")
+  messagesSent                Message[]
+  questionsAsked              Question[]
+  answersGiven                Answer[]
+  answerLikes                 AnswerLike[]
+  notifications               Notification[]
+  leadCredit                  LeadCredit?
+  creditTransactions          CreditTransaction[]  @relation("CreditOwner")
+  adminCreditTransactions     CreditTransaction[]  @relation("CreditAdmin")
+  payments                    Payment[]
+  creditRequests              CreditRequest[]      @relation("CreditRequester")
+  creditRequestsReviewed      CreditRequest[]      @relation("CreditReviewer")
+  adminAuditLogs              AdminAuditLog[]
+  verificationsReviewed       TradespersonProfile[] @relation("VerificationReviewer")
 
   @@index([email])
   @@index([role])
+  @@index([accountStatus])
   @@map("users")
 }
 
 // ─── Tradesperson Profiles ───────────────────────────────────
 
 model TradespersonProfile {
-  id                String   @id @default(cuid())
-  userId            String   @unique
-  user              User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id     String @id @default(cuid())
+  userId String @unique
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   // Public profile
-  username          String   @unique
-  companyName       String?
-  bio               String?  @db.Text
-  trade             String?
+  username    String  @unique
+  companyName String?
+  bio         String? @db.Text
+  trade       String?
 
   // Location & work area
-  postcode          String?
-  latitude          Float?
-  longitude         Float?
-  workRadiusMiles   Int      @default(25)
+  postcode        String?
+  latitude        Float?
+  longitude       Float?
+  workRadiusMiles Int     @default(25)
 
   // Verification
-  idDocumentUrl     String?
-  verificationStatus VerificationStatus @default(PENDING)
-  verifiedAt        DateTime?
+  /// Deprecated: public URL from before ID documents were private. Use idDocumentKey.
+  idDocumentUrl        String?
+  /// Private S3 object key; served to admins via short-lived presigned URLs only.
+  idDocumentKey        String?
+  idDocumentName       String?
+  idDocumentUploadedAt DateTime?
+  verificationStatus   VerificationStatus @default(NOT_SUBMITTED)
+  /// Shown to the tradesperson: rejection reason / what info is needed.
+  verificationNote     String?            @db.Text
+  submittedAt          DateTime?
+  verifiedAt           DateTime?
+  reviewedAt           DateTime?
+  reviewedById         String?
+  reviewedBy           User?              @relation("VerificationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
 
   // Insurance
   publicLiability       String?
   employersLiability    String?
   professionalIndemnity String?
-  insuranceVerified     Boolean  @default(false)
+  insuranceVerified     Boolean   @default(false)
   insuranceExpiresAt    DateTime?
 
   // Settings
-  guarantee         Boolean  @default(false)
-  responseTime      String?
+  guarantee    Boolean @default(false)
+  responseTime String?
 
   // Aggregates (denormalized for read performance)
-  avgRating         Float    @default(0)
-  reviewCount       Int      @default(0)
-  completedJobs     Int      @default(0)
+  avgRating     Float @default(0)
+  reviewCount   Int   @default(0)
+  completedJobs Int   @default(0)
 
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
-  services          TradespersonService[]
-  qualifications    Qualification[]
-  portfolioItems    PortfolioItem[]
-  messageTemplates  MessageTemplate[]
-  documents         ProfileDocument[]
+  services         TradespersonService[]
+  qualifications   Qualification[]
+  portfolioItems   PortfolioItem[]
+  messageTemplates MessageTemplate[]
+  documents        ProfileDocument[]
 
   @@index([username])
   @@index([postcode])
@@ -181,7 +262,8 @@ model TradespersonService {
   tradespersonProfileId String
   tradespersonProfile   TradespersonProfile @relation(fields: [tradespersonProfileId], references: [id], onDelete: Cascade)
   serviceSlug           String
-  tradeSlug             String?
+  /// Empty string means "whole service" (NULL would bypass the unique constraint).
+  tradeSlug             String              @default("")
 
   @@unique([tradespersonProfileId, serviceSlug, tradeSlug])
   @@index([serviceSlug])
@@ -238,30 +320,42 @@ model ProfileDocument {
 // ─── Jobs ────────────────────────────────────────────────────
 
 model Job {
-  id            String    @id @default(cuid())
-  jobNumber     Int       @default(autoincrement()) @unique
-  homeownerId   String
-  homeowner     User      @relation("HomeownerJobs", fields: [homeownerId], references: [id], onDelete: Cascade)
+  id          String @id @default(cuid())
+  jobNumber   Int    @unique @default(autoincrement())
+  homeownerId String
+  homeowner   User   @relation("HomeownerJobs", fields: [homeownerId], references: [id], onDelete: Cascade)
 
-  title         String
-  description   String    @db.Text
-  serviceSlug   String
-  tradeSlug     String?
+  title       String
+  description String  @db.Text
+  serviceSlug String
+  tradeSlug   String?
 
   // Location
-  postcode      String
-  placeName     String?
-  latitude      Float?
-  longitude     Float?
+  postcode         String
+  /// Outward code (e.g. "SW1A"), the only location shown to trades before shortlisting.
+  postcodeDistrict String?
+  placeName        String?
+  latitude         Float?
+  longitude        Float?
 
-  // Dynamic question answers
-  answersJson   Json?
+  /// Readable question/answer pairs: [{ question, answer }]
+  answersJson Json?
 
-  // Status
+  /// Lead fee in credits, fixed when the job is posted (never adjusted afterwards).
+  leadFeeCredits Int @default(10)
+
   status        JobStatus @default(ACTIVE)
+  hiredTradespersonId String?
+  hiredTradesperson   User?     @relation("HiredTradesperson", fields: [hiredTradespersonId], references: [id], onDelete: SetNull)
+  hiredAt       DateTime?
+  completedAt   DateTime?
+  closedAt      DateTime?
+  closeReason   String?
+  /// Listing stops attracting new interest after this date.
+  expiresAt     DateTime?
 
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   // Relations
   attachments   JobAttachment[]
@@ -275,6 +369,7 @@ model Job {
   @@index([serviceSlug])
   @@index([latitude, longitude])
   @@index([createdAt])
+  @@index([expiresAt])
   @@map("jobs")
 }
 
@@ -294,25 +389,43 @@ model JobAttachment {
 // ─── Leads ───────────────────────────────────────────────────
 
 model Lead {
-  id              String     @id @default(cuid())
-  jobId           String
-  job             Job        @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  tradespersonId  String
-  tradesperson    User       @relation("TradespersonLeads", fields: [tradespersonId], references: [id], onDelete: Cascade)
+  id             String @id @default(cuid())
+  jobId          String
+  job            Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  tradespersonId String
+  tradesperson   User   @relation("TradespersonLeads", fields: [tradespersonId], references: [id], onDelete: Cascade)
 
-  status          LeadStatus @default(AVAILABLE)
-  creditCost      Int        @default(0)
-  distanceMiles   Float?
+  status        LeadStatus @default(AVAILABLE)
+  /// Fee in credits copied from the job when the lead was created.
+  creditCost    Int        @default(0)
+  /// Credits currently held for this lead (set on interest, cleared on charge/release).
+  creditsReserved Int      @default(0)
+  /// Credits actually charged (set when shortlisted).
+  creditsCharged  Int      @default(0)
+  distanceMiles Float?
 
-  interestedAt    DateTime?
-  shortlistedAt   DateTime?
-  contactedAt     DateTime?
-  hiredAt         DateTime?
-  rejectedAt      DateTime?
-  expiresAt       DateTime?
+  /// Homeowner invited this tradesperson directly ("Request a quote").
+  invited   Boolean   @default(false)
+  invitedAt DateTime?
 
-  createdAt       DateTime   @default(now())
-  updatedAt       DateTime   @updatedAt
+  /// Message sent with the expression of interest.
+  interestMessage String?   @db.Text
+  /// Trade dismissed the lead ("not interested"); hidden from their new-leads list.
+  dismissedAt     DateTime?
+
+  interestedAt      DateTime?
+  shortlistedAt     DateTime?
+  hiredAt           DateTime?
+  declinedAt        DateTime?
+  withdrawnAt       DateTime?
+  notSelectedAt     DateTime?
+  reviewRequestedAt DateTime?
+  expiresAt         DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  creditRequest CreditRequest?
 
   @@unique([jobId, tradespersonId])
   @@index([tradespersonId, status])
@@ -324,20 +437,20 @@ model Lead {
 // ─── Quotes ──────────────────────────────────────────────────
 
 model Quote {
-  id              String      @id @default(cuid())
-  jobId           String
-  job             Job         @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  tradespersonId  String
-  tradesperson    User        @relation("TradespersonQuotes", fields: [tradespersonId], references: [id], onDelete: Cascade)
+  id             String @id @default(cuid())
+  jobId          String
+  job            Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  tradespersonId String
+  tradesperson   User   @relation("TradespersonQuotes", fields: [tradespersonId], references: [id], onDelete: Cascade)
 
-  message         String      @db.Text
-  amountPence     Int?
-  estimateRange   String?
+  message       String  @db.Text
+  amountPence   Int?
+  estimateRange String?
 
-  status          QuoteStatus @default(PENDING)
+  status QuoteStatus @default(PENDING)
 
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
   @@unique([jobId, tradespersonId])
   @@index([jobId])
@@ -348,17 +461,17 @@ model Quote {
 // ─── Conversations & Messages ────────────────────────────────
 
 model Conversation {
-  id              String   @id @default(cuid())
-  jobId           String
-  job             Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  homeownerId     String
-  homeowner       User     @relation("HomeownerConversations", fields: [homeownerId], references: [id], onDelete: Cascade)
-  tradespersonId  String
-  tradesperson    User     @relation("TradespersonConversations", fields: [tradespersonId], references: [id], onDelete: Cascade)
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String   @id @default(cuid())
+  jobId          String
+  job            Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  homeownerId    String
+  homeowner      User     @relation("HomeownerConversations", fields: [homeownerId], references: [id], onDelete: Cascade)
+  tradespersonId String
+  tradesperson   User     @relation("TradespersonConversations", fields: [tradespersonId], references: [id], onDelete: Cascade)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
 
-  messages        Message[]
+  messages Message[]
 
   @@unique([jobId, homeownerId, tradespersonId])
   @@index([homeownerId])
@@ -367,14 +480,14 @@ model Conversation {
 }
 
 model Message {
-  id              String   @id @default(cuid())
-  conversationId  String
-  conversation    Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
-  senderId        String
-  sender          User     @relation(fields: [senderId], references: [id], onDelete: Cascade)
-  body            String   @db.Text
-  readAt          DateTime?
-  createdAt       DateTime @default(now())
+  id             String       @id @default(cuid())
+  conversationId String
+  conversation   Conversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+  senderId       String
+  sender         User         @relation(fields: [senderId], references: [id], onDelete: Cascade)
+  body           String       @db.Text
+  readAt         DateTime?
+  createdAt      DateTime     @default(now())
 
   @@index([conversationId, createdAt])
   @@map("messages")
@@ -383,20 +496,23 @@ model Message {
 // ─── Reviews ─────────────────────────────────────────────────
 
 model Review {
-  id              String   @id @default(cuid())
-  jobId           String
-  job             Job      @relation(fields: [jobId], references: [id], onDelete: Cascade)
-  authorId        String
-  author          User     @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
-  subjectId       String
-  subject         User     @relation("ReviewSubject", fields: [subjectId], references: [id], onDelete: Cascade)
+  id        String @id @default(cuid())
+  jobId     String
+  job       Job    @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User   @relation("ReviewAuthor", fields: [authorId], references: [id], onDelete: Cascade)
+  subjectId String
+  subject   User   @relation("ReviewSubject", fields: [subjectId], references: [id], onDelete: Cascade)
 
-  rating          Int
-  comment         String   @db.Text
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  rating       Int
+  comment      String    @db.Text
+  /// Moderation: hidden reviews are excluded from profiles and the rating average.
+  hiddenAt     DateTime?
+  hiddenReason String?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
 
-  reply           ReviewReply?
+  reply ReviewReply?
 
   @@unique([jobId, authorId])
   @@index([subjectId])
@@ -420,7 +536,7 @@ model ReviewReply {
 
 model Question {
   id             String   @id @default(cuid())
-  questionNumber Int      @default(autoincrement()) @unique
+  questionNumber Int      @unique @default(autoincrement())
   authorId       String
   author         User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
   serviceSlug    String?
@@ -430,7 +546,7 @@ model Question {
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
 
-  answers        Answer[]
+  answers Answer[]
 
   @@index([serviceSlug])
   @@index([createdAt])
@@ -438,29 +554,29 @@ model Question {
 }
 
 model Answer {
-  id          String   @id @default(cuid())
-  questionId  String
-  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  authorId    String
-  author      User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
-  body        String   @db.Text
-  isBest      Boolean  @default(false)
-  likesCount  Int      @default(0)
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id         String   @id @default(cuid())
+  questionId String
+  question   Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  authorId   String
+  author     User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+  body       String   @db.Text
+  isBest     Boolean  @default(false)
+  likesCount Int      @default(0)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
 
-  likes       AnswerLike[]
+  likes AnswerLike[]
 
   @@index([questionId])
   @@map("answers")
 }
 
 model AnswerLike {
-  id        String @id @default(cuid())
-  answerId  String
-  answer    Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
-  userId    String
-  user      User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  id       String @id @default(cuid())
+  answerId String
+  answer   Answer @relation(fields: [answerId], references: [id], onDelete: Cascade)
+  userId   String
+  user     User   @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@unique([answerId, userId])
   @@map("answer_likes")
@@ -487,46 +603,124 @@ model Notification {
 // ─── Lead Credits & Payments ─────────────────────────────────
 
 model LeadCredit {
-  id              String   @id @default(cuid())
-  userId          String   @unique
-  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  balance         Int      @default(0)
-  autoTopup       Boolean  @default(false)
-  topupAmount     Int?
-  topupThreshold  Int?
-  lastTopupAt     DateTime?
-  createdAt       DateTime @default(now())
-  updatedAt       DateTime @updatedAt
+  id             String    @id @default(cuid())
+  userId         String    @unique
+  user           User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  /// Spendable credits (excludes reserved).
+  balance        Int       @default(0)
+  /// Credits held against open expressions of interest.
+  reserved       Int       @default(0)
+  autoTopup      Boolean   @default(false)
+  topupAmount    Int?
+  topupThreshold Int?
+  lastTopupAt    DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   @@map("lead_credits")
 }
 
+/// Append-only ledger: every change to a credit balance is one row.
+model CreditTransaction {
+  id             String                @id @default(cuid())
+  userId         String
+  user           User                  @relation("CreditOwner", fields: [userId], references: [id], onDelete: Cascade)
+  type           CreditTransactionType
+  /// Change to the spendable balance (negative = debit).
+  amount         Int
+  /// Change to the reserved balance.
+  reservedChange Int                   @default(0)
+  balanceAfter   Int
+  reservedAfter  Int
+  leadId         String?
+  paymentId      String?
+  creditRequestId String?
+  adminId        String?
+  admin          User?                 @relation("CreditAdmin", fields: [adminId], references: [id], onDelete: SetNull)
+  note           String?
+  createdAt      DateTime              @default(now())
+
+  @@index([userId, createdAt])
+  @@index([leadId])
+  @@map("credit_transactions")
+}
+
 model Payment {
-  id            String        @id @default(cuid())
-  userId        String
-  user          User          @relation(fields: [userId], references: [id], onDelete: Cascade)
-  type          PaymentType
-  amountPence   Int
-  credits       Int?
-  status        PaymentStatus @default(PENDING)
-  stripeSessionId String?    @unique
-  stripePaymentIntentId String?
-  description   String?
-  createdAt     DateTime      @default(now())
+  id                    String        @id @default(cuid())
+  userId                String
+  user                  User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type                  PaymentType
+  amountPence           Int
+  credits               Int?
+  status                PaymentStatus @default(PENDING)
+  stripeSessionId       String?       @unique
+  stripePaymentIntentId String?       @unique
+  description           String?
+  completedAt           DateTime?
+  refundedAt            DateTime?
+  createdAt             DateTime      @default(now())
 
   @@index([userId])
-  @@index([stripeSessionId])
   @@map("payments")
+}
+
+/// Processed Stripe webhook events (idempotency).
+model StripeEvent {
+  id          String   @id
+  type        String
+  processedAt DateTime @default(now())
+
+  @@map("stripe_events")
+}
+
+/// Lead-fee credit requests (MyBuilder "request a credit for a shortlist fee").
+model CreditRequest {
+  id             String              @id @default(cuid())
+  leadId         String              @unique
+  lead           Lead                @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  tradespersonId String
+  tradesperson   User                @relation("CreditRequester", fields: [tradespersonId], references: [id], onDelete: Cascade)
+  reason         CreditRequestReason
+  details        String              @db.Text
+  status         CreditRequestStatus @default(PENDING)
+  credits        Int
+  adminNote      String?             @db.Text
+  reviewedById   String?
+  reviewedBy     User?               @relation("CreditReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  reviewedAt     DateTime?
+  createdAt      DateTime            @default(now())
+
+  @@index([status, createdAt])
+  @@map("credit_requests")
+}
+
+// ─── Admin ───────────────────────────────────────────────────
+
+model AdminAuditLog {
+  id         String   @id @default(cuid())
+  adminId    String
+  admin      User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  action     String
+  targetType String
+  targetId   String
+  details    Json?
+  createdAt  DateTime @default(now())
+
+  @@index([targetType, targetId])
+  @@index([createdAt])
+  @@map("admin_audit_logs")
 }
 
 // ─── Lookup: Services ────────────────────────────────────────
 
 model Service {
-  slug      String  @id
-  name      String
-  imageUrl  String?
+  slug           String  @id
+  name           String
+  imageUrl       String?
+  /// Credits charged when a tradesperson is shortlisted for a job in this service.
+  leadFeeCredits Int     @default(10)
 
-  trades    Trade[]
+  trades Trade[]
 
   @@map("services")
 }

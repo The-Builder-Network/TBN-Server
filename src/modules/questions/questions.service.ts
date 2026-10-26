@@ -4,14 +4,26 @@ import {
   ForbiddenException,
   BadRequestException,
 } from '@nestjs/common';
+import type { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { NotificationsService } from '../notifications/notifications.service.js';
 import type { CreateQuestionDto } from './dto/create-question.dto.js';
 import type { GetQuestionsQueryDto } from './dto/get-questions-query.dto.js';
 import type { CreateAnswerDto } from './dto/create-answer.dto.js';
 
+/** Accept either the public question number ("123") or the internal id. */
+function questionWhere(idOrNumber: string): Prisma.QuestionWhereUniqueInput {
+  return /^\d+$/.test(idOrNumber)
+    ? { questionNumber: Number(idOrNumber) }
+    : { id: idOrNumber };
+}
+
 @Injectable()
 export class QuestionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
   // ── POST /questions ──────────────────────────────────────────────────────
 
@@ -85,14 +97,8 @@ export class QuestionsService {
   // ── GET /questions/:id ────────────────────────────────────────────────────
 
   async getQuestion(id: string, currentUserId?: string) {
-    // Accept either a numeric questionNumber or a cuid
-    const numericId = parseInt(id, 10);
-    const where =
-      !isNaN(numericId) && String(numericId) === id
-        ? { questionNumber: numericId }
-        : { id };
     const question = await this.prisma.question.findUnique({
-      where,
+      where: questionWhere(id),
       include: {
         author: { select: { name: true, avatarUrl: true } },
         answers: {
@@ -157,26 +163,41 @@ export class QuestionsService {
     authorId: string,
     dto: CreateAnswerDto,
   ) {
+    // The web links questions by number (/questions/123), so resolve either form.
     const question = await this.prisma.question.findUnique({
-      where: { id: questionId },
+      where: questionWhere(questionId),
     });
     if (!question) throw new NotFoundException('Question not found');
 
     const [answer] = await this.prisma.$transaction([
       this.prisma.answer.create({
         data: {
-          questionId,
+          questionId: question.id,
           authorId,
           body: dto.body,
         },
       }),
       this.prisma.question.update({
-        where: { id: questionId },
+        where: { id: question.id },
         data: { answerCount: { increment: 1 } },
       }),
     ]);
 
-    return { id: answer.id };
+    if (question.authorId !== authorId) {
+      void this.notifications.notify({
+        userId: question.authorId,
+        type: 'NEW_ANSWER',
+        title: `New answer to "${question.title}"`,
+        linkUrl: `/questions/${question.questionNumber}`,
+        email: {
+          subject: 'A tradesperson answered your question',
+          paragraphs: [`Your question "${question.title}" has a new answer.`],
+          ctaLabel: 'Read the answer',
+        },
+      });
+    }
+
+    return { id: answer.id, questionId: question.id };
   }
 
   // ── POST /answers/:id/like ─────────────────────────────────────────────────

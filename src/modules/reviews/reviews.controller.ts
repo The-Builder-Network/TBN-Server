@@ -2,11 +2,11 @@ import {
   Controller,
   Get,
   Post,
+  Patch,
   Param,
   Body,
   Query,
   UseGuards,
-  ValidationPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
@@ -16,7 +16,7 @@ import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../auth/auth.service.js';
-import { CreateReviewDto } from './dto/create-review.dto.js';
+import { CreateReviewDto, UpdateReviewDto } from './dto/create-review.dto.js';
 import { ReplyToReviewDto } from './dto/reply-to-review.dto.js';
 import { GetReviewsQueryDto } from './dto/get-reviews-query.dto.js';
 
@@ -24,41 +24,38 @@ import { GetReviewsQueryDto } from './dto/get-reviews-query.dto.js';
 export class ReviewsController {
   constructor(private readonly reviewsService: ReviewsService) {}
 
-  // ── POST /reviews — create review (HOMEOWNER) ─────────────────────────────
-
   @Post()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('HOMEOWNER')
   @HttpCode(HttpStatus.CREATED)
-  async createReview(
-    @CurrentUser() user: JwtPayload,
-    @Body(new ValidationPipe({ transform: true, whitelist: true }))
-    dto: CreateReviewDto,
-  ) {
+  createReview(@CurrentUser() user: JwtPayload, @Body() dto: CreateReviewDto) {
     return this.reviewsService.createReview(user.sub, dto);
   }
 
-  // ── GET /reviews?tradespersonId=X — paginated ─────────────────────────────
-
-  @Get()
-  async getReviews(
-    @Query(new ValidationPipe({ transform: true, whitelist: true }))
-    query: GetReviewsQueryDto,
+  @Patch(':id')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('HOMEOWNER')
+  updateReview(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: UpdateReviewDto,
   ) {
-    return this.reviewsService.getReviews(query);
+    return this.reviewsService.updateReview(id, user.sub, dto);
   }
 
-  // ── POST /reviews/:id/reply (TRADESPERSON only) ───────────────────────────
+  @Get()
+  getReviews(@Query() query: GetReviewsQueryDto) {
+    return this.reviewsService.getReviews(query);
+  }
 
   @Post(':id/reply')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('TRADESPERSON')
   @HttpCode(HttpStatus.CREATED)
-  async replyToReview(
+  replyToReview(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
-    @Body(new ValidationPipe({ transform: true, whitelist: true }))
-    dto: ReplyToReviewDto,
+    @Body() dto: ReplyToReviewDto,
   ) {
     return this.reviewsService.replyToReview(id, user.sub, dto);
   }

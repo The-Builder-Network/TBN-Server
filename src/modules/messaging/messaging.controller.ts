@@ -6,11 +6,10 @@ import {
   Body,
   Query,
   UseGuards,
-  ValidationPipe,
   HttpCode,
   HttpStatus,
-  ParseIntPipe,
   DefaultValuePipe,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { MessagingService } from './messaging.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
@@ -23,35 +22,44 @@ import { SendMessageDto } from './dto/send-message.dto.js';
 export class MessagingController {
   constructor(private readonly messagingService: MessagingService) {}
 
-  // ── GET /conversations ────────────────────────────────────────────────────
-
   @Get()
-  async getConversations(@CurrentUser() user: JwtPayload) {
+  getConversations(@CurrentUser() user: JwtPayload) {
     return this.messagingService.getConversations(user.sub);
   }
 
-  // ── GET /conversations/:id/messages ──────────────────────────────────────
-
-  @Get(':id/messages')
-  async getMessages(
-    @CurrentUser() user: JwtPayload,
-    @Param('id') id: string,
-    @Query('page', new DefaultValuePipe(1), ParseIntPipe) page: number,
-    @Query('perPage', new DefaultValuePipe(50), ParseIntPipe) perPage: number,
-  ) {
-    return this.messagingService.getMessages(id, user.sub, page, perPage);
+  @Get(':id')
+  getConversation(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.messagingService.getConversation(id, user.sub);
   }
 
-  // ── POST /conversations/:id/messages ──────────────────────────────────────
+  @Get(':id/messages')
+  getMessages(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Query('before') before?: string,
+    @Query('limit', new DefaultValuePipe(50), ParseIntPipe) limit = 50,
+  ) {
+    return this.messagingService.getMessages(
+      id,
+      user.sub,
+      before,
+      Math.min(Math.max(limit, 1), 100),
+    );
+  }
 
   @Post(':id/messages')
   @HttpCode(HttpStatus.CREATED)
-  async sendMessage(
+  sendMessage(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
-    @Body(new ValidationPipe({ transform: true, whitelist: true }))
-    dto: SendMessageDto,
+    @Body() dto: SendMessageDto,
   ) {
     return this.messagingService.sendMessage(id, user.sub, dto);
+  }
+
+  @Post(':id/read')
+  @HttpCode(HttpStatus.OK)
+  markRead(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.messagingService.markRead(id, user.sub);
   }
 }

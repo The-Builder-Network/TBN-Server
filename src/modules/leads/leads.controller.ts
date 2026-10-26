@@ -2,79 +2,117 @@ import {
   Controller,
   Get,
   Post,
+  Put,
   Param,
   Body,
   Query,
   UseGuards,
-  ValidationPipe,
   HttpCode,
   HttpStatus,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { LeadsService } from './leads.service.js';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard.js';
 import { RolesGuard } from '../auth/guards/roles.guard.js';
 import { Roles } from '../auth/decorators/roles.decorator.js';
 import { CurrentUser } from '../auth/decorators/current-user.decorator.js';
 import type { JwtPayload } from '../auth/auth.service.js';
-import { GetLeadsQueryDto } from './dto/get-leads-query.dto.js';
-import { ExpressInterestDto } from './dto/express-interest.dto.js';
+import {
+  CreditRequestDto,
+  GetLeadsQueryDto,
+  LeadsCountQueryDto,
+} from './dto/get-leads-query.dto.js';
+import { ExpressInterestDto, QuoteDto } from './dto/express-interest.dto.js';
 
 @Controller('api/v1/leads')
 export class LeadsController {
-  constructor(private readonly leadsService: LeadsService) {}
+  constructor(private readonly leads: LeadsService) {}
 
-  // ── PUBLIC: trust-signal lead count ──────────────────────────────────────
-
+  // ── PUBLIC: jobs near a postcode (trust signal) ──────────────────────────
   @Get('count')
-  async countLeads(
-    @Query('postcode') postcode: string,
-    @Query('radius') radius: string,
-  ) {
-    const radiusNum = Math.min(Math.max(parseInt(radius || '30', 10), 1), 200);
-    const count = await this.leadsService.countAvailableLeadsNear(
-      postcode || '',
-      radiusNum,
-    );
-    return { count };
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
+  count(@Query() query: LeadsCountQueryDto) {
+    return this.leads.countLeadsNear(query);
   }
 
-  // ── TRADESPERSON: list leads ──────────────────────────────────────────────
-
+  // ── TRADESPERSON ──────────────────────────────────────────────────────────
   @Get()
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('TRADESPERSON')
-  async getLeads(
-    @CurrentUser() user: JwtPayload,
-    @Query(new ValidationPipe({ transform: true, whitelist: true }))
-    query: GetLeadsQueryDto,
-  ) {
-    return this.leadsService.getLeads(user.sub, query);
+  getLeads(@CurrentUser() user: JwtPayload, @Query() query: GetLeadsQueryDto) {
+    return this.leads.getLeads(user.sub, query);
   }
 
-  // ── TRADESPERSON: lead detail ─────────────────────────────────────────────
+  @Get('summary')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRADESPERSON')
+  summary(@CurrentUser() user: JwtPayload) {
+    return this.leads.getSummary(user.sub);
+  }
 
   @Get(':id')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('TRADESPERSON')
-  async getLead(
-    @CurrentUser() user: JwtPayload,
-    @Param('id') id: string,
-  ) {
-    return this.leadsService.getLead(id, user.sub);
+  getLead(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.leads.getLead(id, user.sub);
   }
-
-  // ── TRADESPERSON: express interest ───────────────────────────────────────
 
   @Post(':id/express-interest')
   @UseGuards(JwtAuthGuard, RolesGuard)
   @Roles('TRADESPERSON')
   @HttpCode(HttpStatus.OK)
-  async expressInterest(
+  expressInterest(
     @CurrentUser() user: JwtPayload,
     @Param('id') id: string,
-    @Body(new ValidationPipe({ transform: true, whitelist: true }))
-    dto: ExpressInterestDto,
+    @Body() dto: ExpressInterestDto,
   ) {
-    return this.leadsService.expressInterest(id, user.sub, dto);
+    return this.leads.expressInterest(id, user.sub, dto);
+  }
+
+  @Post(':id/withdraw')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRADESPERSON')
+  @HttpCode(HttpStatus.OK)
+  withdraw(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.leads.withdraw(id, user.sub);
+  }
+
+  @Post(':id/dismiss')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRADESPERSON')
+  @HttpCode(HttpStatus.OK)
+  dismiss(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.leads.dismiss(id, user.sub);
+  }
+
+  @Put(':id/quote')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRADESPERSON')
+  quote(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: QuoteDto,
+  ) {
+    return this.leads.upsertQuote(id, user.sub, dto);
+  }
+
+  @Post(':id/request-review')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRADESPERSON')
+  @HttpCode(HttpStatus.OK)
+  requestReview(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
+    return this.leads.requestReview(id, user.sub);
+  }
+
+  @Post(':id/credit-request')
+  @UseGuards(JwtAuthGuard, RolesGuard)
+  @Roles('TRADESPERSON')
+  @HttpCode(HttpStatus.CREATED)
+  creditRequest(
+    @CurrentUser() user: JwtPayload,
+    @Param('id') id: string,
+    @Body() dto: CreditRequestDto,
+  ) {
+    return this.leads.requestCredit(id, user.sub, dto.reason, dto.details);
   }
 }

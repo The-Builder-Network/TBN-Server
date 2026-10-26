@@ -16,66 +16,103 @@ import { RefreshDto } from './dto/refresh.dto.js';
 import { ForgotPasswordDto } from './dto/forgot-password.dto.js';
 import { ResetPasswordDto } from './dto/reset-password.dto.js';
 import { VerifyEmailDto } from './dto/verify-email.dto.js';
+import {
+  ChangePasswordDto,
+  CheckEmailDto,
+  CheckPhoneDto,
+} from './dto/account.dto.js';
 import { CurrentUser } from './decorators/current-user.decorator.js';
 import type { JwtPayload } from './auth.service.js';
 
-// Auth endpoints are rate-limited much stricter: 5 requests per minute
-@Throttle({ default: { limit: 5, ttl: 60_000 } })
+// Credential-guessing endpoints get a tight per-IP limit; session endpoints
+// (/me, /refresh) use the global default so normal page loads never hit 429.
+const STRICT = { default: { limit: 10, ttl: 60_000 } };
+const LOOKUP = { default: { limit: 30, ttl: 60_000 } };
+
 @Controller('api/v1/auth')
 export class AuthController {
   constructor(private readonly authService: AuthService) {}
 
   @Post('register')
-  async register(@Body() dto: RegisterDto) {
+  @Throttle(STRICT)
+  register(@Body() dto: RegisterDto) {
     return this.authService.register(dto);
   }
 
   @Post('login')
+  @Throttle(STRICT)
   @HttpCode(HttpStatus.OK)
-  async login(@Body() dto: LoginDto) {
+  login(@Body() dto: LoginDto) {
     return this.authService.login(dto);
   }
 
   @Post('refresh')
   @HttpCode(HttpStatus.OK)
-  async refresh(@Body() dto: RefreshDto) {
-    const tokens = await this.authService.refresh(dto.refreshToken);
-    return tokens;
+  refresh(@Body() dto: RefreshDto) {
+    return this.authService.refresh(dto.refreshToken);
   }
 
   @Get('me')
-  @UseGuards(JwtAuthGuard) // eslint-disable-line @typescript-eslint/no-unsafe-argument
-  async me(@CurrentUser() user: JwtPayload) {
+  @UseGuards(JwtAuthGuard)
+  me(@CurrentUser() user: JwtPayload) {
     return this.authService.getMe(user.sub);
   }
 
-  @Post('forgot-password')
+  @Post('change-password')
+  @Throttle(STRICT)
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  async forgotPassword(@Body() dto: ForgotPasswordDto) {
+  changePassword(
+    @CurrentUser() user: JwtPayload,
+    @Body() dto: ChangePasswordDto,
+  ) {
+    return this.authService.changePassword(
+      user.sub,
+      dto.currentPassword,
+      dto.newPassword,
+    );
+  }
+
+  @Post('forgot-password')
+  @Throttle(STRICT)
+  @HttpCode(HttpStatus.OK)
+  forgotPassword(@Body() dto: ForgotPasswordDto) {
     return this.authService.forgotPassword(dto.email);
   }
 
   @Post('reset-password')
+  @Throttle(STRICT)
   @HttpCode(HttpStatus.OK)
-  async resetPassword(@Body() dto: ResetPasswordDto) {
+  resetPassword(@Body() dto: ResetPasswordDto) {
     return this.authService.resetPassword(dto.token, dto.newPassword);
   }
 
   @Post('verify-email')
+  @Throttle(STRICT)
   @HttpCode(HttpStatus.OK)
-  async verifyEmail(@Body() dto: VerifyEmailDto) {
+  verifyEmail(@Body() dto: VerifyEmailDto) {
     return this.authService.verifyEmail(dto.token);
   }
 
-  @Post('check-email')
+  @Post('resend-verification')
+  @Throttle(STRICT)
+  @UseGuards(JwtAuthGuard)
   @HttpCode(HttpStatus.OK)
-  checkEmail(@Body() body: { email: string }) {
-    return this.authService.checkEmail(body.email);
+  resendVerification(@CurrentUser() user: JwtPayload) {
+    return this.authService.resendVerification(user.sub);
+  }
+
+  @Post('check-email')
+  @Throttle(LOOKUP)
+  @HttpCode(HttpStatus.OK)
+  checkEmail(@Body() dto: CheckEmailDto) {
+    return this.authService.checkEmail(dto.email);
   }
 
   @Post('check-phone')
+  @Throttle(LOOKUP)
   @HttpCode(HttpStatus.OK)
-  checkPhone(@Body() body: { phone: string }) {
-    return this.authService.checkPhone(body.phone);
+  checkPhone(@Body() dto: CheckPhoneDto) {
+    return this.authService.checkPhone(dto.phone);
   }
 }

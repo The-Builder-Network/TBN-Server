@@ -43,10 +43,7 @@ export class NotificationsController {
 
   @Patch(':id/read')
   @HttpCode(HttpStatus.OK)
-  async markRead(
-    @CurrentUser() user: JwtPayload,
-    @Param('id') id: string,
-  ) {
+  async markRead(@CurrentUser() user: JwtPayload, @Param('id') id: string) {
     await this.notificationsService.markRead(id, user.sub);
     return { ok: true };
   }

@@ -1,11 +1,13 @@
 import { Module } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { ConfigModule } from '@nestjs/config';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { LoggerModule } from 'nestjs-pino';
 import * as Joi from 'joi';
 import { PrismaModule } from './prisma/prisma.module.js';
+import { CommonModule } from './common/common.module.js';
+import { AllExceptionsFilter } from './common/all-exceptions.filter.js';
 import { HealthController } from './health/health.controller.js';
 import { AuthModule } from './modules/auth/auth.module.js';
 import { UsersModule } from './modules/users/users.module.js';
@@ -27,9 +29,18 @@ import { MaintenanceModule } from './modules/maintenance/maintenance.module.js';
     ConfigModule.forRoot({
       isGlobal: true,
       validationSchema: Joi.object({
+        NODE_ENV: Joi.string()
+          .valid('development', 'test', 'production')
+          .default('development'),
         DATABASE_URL: Joi.string().required(),
+        DIRECT_URL: Joi.string().allow('').optional(),
         JWT_SECRET: Joi.string().required(),
-        FRONTEND_URL: Joi.string().required(),
+        FRONTEND_URL: Joi.string().uri().required(),
+        ADMIN_URL: Joi.string().uri().allow('').optional(),
+        CORS_ORIGINS: Joi.string().allow('').optional(),
+        EMAIL_FROM: Joi.string().allow('').optional(),
+        WELCOME_CREDITS: Joi.number().integer().min(0).optional(),
+        SENTRY_DSN: Joi.string().allow('').optional(),
         PORT: Joi.number().default(3000),
         RESEND_API_KEY: Joi.string().allow('').optional(),
         AWS_REGION: Joi.string().allow('').optional(),
@@ -39,6 +50,7 @@ import { MaintenanceModule } from './modules/maintenance/maintenance.module.js';
         CLOUDFRONT_URL: Joi.string().allow('').optional(),
         STRIPE_SECRET_KEY: Joi.string().allow('').optional(),
         STRIPE_WEBHOOK_SECRET: Joi.string().allow('').optional(),
+        STRIPE_PUBLISHABLE_KEY: Joi.string().allow('').optional(),
       }),
     }),
     // Global rate limiting: 60 req/min by default (auth endpoints override to 5/min)
@@ -65,6 +77,7 @@ import { MaintenanceModule } from './modules/maintenance/maintenance.module.js';
     }),
     ScheduleModule.forRoot(),
     PrismaModule,
+    CommonModule,
     AuthModule,
     UsersModule,
     JobsModule,
@@ -82,6 +95,7 @@ import { MaintenanceModule } from './modules/maintenance/maintenance.module.js';
   ],
   controllers: [HealthController],
   providers: [
+    { provide: APP_FILTER, useClass: AllExceptionsFilter },
     // Apply ThrottlerGuard globally; individual controllers/routes override via @Throttle()
     {
       provide: APP_GUARD,

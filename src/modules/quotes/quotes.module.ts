@@ -1,10 +1,10 @@
 import { Module } from '@nestjs/common';
 import { QuotesController } from './quotes.controller.js';
 import { QuotesService } from './quotes.service.js';
-import { NotificationsModule } from '../notifications/notifications.module.js';
+import { JobsModule } from '../jobs/jobs.module.js';
 
 @Module({
-  imports: [NotificationsModule],
+  imports: [JobsModule],
   controllers: [QuotesController],
   providers: [QuotesService],
   exports: [QuotesService],

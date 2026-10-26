@@ -1,32 +1,31 @@
 import 'dotenv/config';
 import { NestFactory } from '@nestjs/core';
 import { ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import { Logger } from 'nestjs-pino';
 import helmet from 'helmet';
 import { AppModule } from './app.module.js';
+import { allowedOrigins } from './common/cors.js';
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule, {
-    rawBody: true,
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    rawBody: true, // Stripe webhook signature verification needs the raw body
     bufferLogs: true,
   });
 
-  // ── Security headers ─────────────────────────────────────────────────────────
+  // Behind a load balancer / proxy: use the client IP for rate limiting and logs.
+  app.set('trust proxy', 1);
+
   app.use(
     helmet({
-      // Allow Socket.IO and Stripe to work
-      contentSecurityPolicy: false,
+      contentSecurityPolicy: false, // JSON API only; Socket.IO + Stripe redirects
       crossOriginEmbedderPolicy: false,
     }),
   );
 
-  // ── Structured request logging (replaces console.log) ───────────────────────
   app.useLogger(app.get(Logger));
 
-  app.enableCors({
-    origin: process.env.FRONTEND_URL,
-    credentials: true,
-  });
+  app.enableCors({ origin: allowedOrigins(), credentials: true });
 
   app.useGlobalPipes(
     new ValidationPipe({
@@ -36,8 +35,14 @@ async function bootstrap() {
     }),
   );
 
+  app.enableShutdownHooks();
+
   const port = process.env.PORT ?? 3000;
   await app.listen(port);
-  app.get(Logger).log(`Server running on http://localhost:${port}`);
+  app
+    .get(Logger)
+    .log(
+      `Server running on http://localhost:${port} (CORS: ${allowedOrigins().join(', ')})`,
+    );
 }
-bootstrap();
+void bootstrap();

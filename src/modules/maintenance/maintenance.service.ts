@@ -1,74 +1,102 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { PrismaService } from '../../prisma/prisma.service.js';
+import { HiringService } from '../jobs/hiring.service.js';
+import {
+  NotificationsService,
+  type NotifyInput,
+} from '../notifications/notifications.service.js';
+
+// Arbitrary constant keys for pg advisory locks (one per task).
+const LOCK_EXPIRE_LEADS = 74_210_001;
+const LOCK_EXPIRE_JOBS = 74_210_002;
 
 @Injectable()
 export class MaintenanceService {
   private readonly logger = new Logger(MaintenanceService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly hiring: HiringService,
+    private readonly notifications: NotificationsService,
+  ) {}
 
-  /**
-   * Daily at 02:00 UTC — close ACTIVE jobs that have 0 tradesperson interest
-   * and were posted more than 14 days ago.
-   */
-  @Cron('0 2 * * *', { timeZone: 'UTC' })
-  async closeStaleJobs(): Promise<void> {
-    const cutoff = new Date(Date.now() - 14 * 24 * 60 * 60 * 1000);
-
-    // Find ACTIVE jobs older than 14 days that have no leads with expressed interest
-    const staleJobs = await this.prisma.job.findMany({
-      where: {
-        status: 'ACTIVE',
-        createdAt: { lt: cutoff },
-        leads: {
-          none: {
-            status: { in: ['INTERESTED', 'CONTACTED', 'HIRED'] },
-          },
-        },
-      },
-      select: { id: true },
+  /** Hourly: new leads nobody responded to within their window expire. */
+  @Cron(CronExpression.EVERY_HOUR)
+  async expireLeads(): Promise<void> {
+    const count = await this.prisma.$transaction(async (tx) => {
+      const [{ locked }] = await tx.$queryRaw<
+        { locked: boolean }[]
+      >`SELECT pg_try_advisory_xact_lock(${LOCK_EXPIRE_LEADS}) AS locked`;
+      if (!locked) return 0;
+      const res = await tx.lead.updateMany({
+        where: { status: 'AVAILABLE', expiresAt: { lte: new Date() } },
+        data: { status: 'EXPIRED' },
+      });
+      return res.count;
     });
-
-    if (staleJobs.length === 0) {
-      this.logger.log('closeStaleJobs: no stale jobs found');
-      return;
-    }
-
-    const ids = staleJobs.map((j) => j.id);
-
-    const { count } = await this.prisma.job.updateMany({
-      where: { id: { in: ids } },
-      data: { status: 'CLOSED' },
-    });
-
-    this.logger.log(
-      `closeStaleJobs: closed ${count} stale job(s) (0 interest, >14 days old)`,
-    );
+    if (count) this.logger.log(`expireLeads: expired ${count} lead(s)`);
   }
 
   /**
-   * Daily at 02:00 UTC — expire AVAILABLE leads that are older than 7 days.
-   * Tradespeople who haven't acted within the window lose the opportunity.
+   * Hourly: open job listings past their expiry close as EXPIRED; trades still
+   * waiting get their reserved credits back and are told the job closed.
    */
-  @Cron('0 2 * * *', { timeZone: 'UTC' })
-  async expireStaleLeads(): Promise<void> {
-    const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000);
-
-    const { count } = await this.prisma.lead.updateMany({
-      where: {
-        status: 'AVAILABLE',
-        createdAt: { lt: cutoff },
+  @Cron(CronExpression.EVERY_HOUR)
+  async expireJobs(): Promise<void> {
+    const notices: NotifyInput[] = [];
+    const count = await this.prisma.$transaction(
+      async (tx) => {
+        const [{ locked }] = await tx.$queryRaw<
+          { locked: boolean }[]
+        >`SELECT pg_try_advisory_xact_lock(${LOCK_EXPIRE_JOBS}) AS locked`;
+        if (!locked) return 0;
+        const jobs = await tx.job.findMany({
+          where: { status: 'ACTIVE', expiresAt: { lte: new Date() } },
+          select: { id: true, title: true, homeownerId: true },
+          take: 200,
+        });
+        for (const job of jobs) {
+          await tx.job.update({
+            where: { id: job.id },
+            data: {
+              status: 'EXPIRED',
+              closedAt: new Date(),
+              closeReason: 'Listing expired',
+            },
+          });
+          const affected = await this.hiring.closeOpenLeads(
+            tx,
+            job.id,
+            'Job listing expired',
+          );
+          notices.push(
+            {
+              userId: job.homeownerId,
+              type: 'JOB_CLOSED',
+              title: `Your job "${job.title}" has expired`,
+              body: 'Post it again if you still need a tradesperson.',
+              linkUrl: `/homeowner/my-jobs/${job.id}`,
+            },
+            ...affected.map<NotifyInput>((l) => ({
+              userId: l.tradespersonId,
+              type: 'JOB_CLOSED',
+              title: `"${job.title}" is no longer available`,
+              body:
+                l.released > 0
+                  ? `${l.released} reserved credits have been returned to your balance.`
+                  : undefined,
+              linkUrl: `/tradesperson/my-leads/${l.id}`,
+            })),
+          );
+        }
+        return jobs.length;
       },
-      data: { status: 'EXPIRED' },
-    });
-
-    if (count > 0) {
-      this.logger.log(
-        `expireStaleLeads: expired ${count} lead(s) older than 7 days`,
-      );
-    } else {
-      this.logger.log('expireStaleLeads: no stale leads found');
+      { timeout: 60_000 },
+    );
+    if (count) {
+      this.logger.log(`expireJobs: expired ${count} job(s)`);
+      await this.notifications.notifyMany(notices);
     }
   }
 }

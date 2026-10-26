@@ -1,35 +1,67 @@
 import {
-  Injectable,
-  NotFoundException,
-  ForbiddenException,
+  BadRequestException,
   ConflictException,
+  ForbiddenException,
+  Injectable,
+  Logger,
+  NotFoundException,
 } from '@nestjs/common';
+import * as bcrypt from 'bcryptjs';
+import { randomBytes } from 'crypto';
+import { Prisma } from '@prisma/client';
 import { PrismaService } from '../../prisma/prisma.service.js';
 import { UploadsService } from '../uploads/uploads.service.js';
-import { PostcodeService } from '../jobs/postcode.service.js';
+import { PostcodeService } from '../../common/postcode.service.js';
+import { postcodeDistrict } from '../../common/geo.js';
+import { JobsService } from '../jobs/jobs.service.js';
+import { HiringService } from '../jobs/hiring.service.js';
+import { CreditsService } from '../credits/credits.service.js';
 import type { UpdateProfileDto } from './dto/update-profile.dto.js';
 import type { AddServiceDto } from './dto/add-service.dto.js';
 import type { AddQualificationDto } from './dto/add-qualification.dto.js';
 import type { CreateMessageTemplateDto } from './dto/create-message-template.dto.js';
 import type { UpdateMessageTemplateDto } from './dto/update-message-template.dto.js';
 import type { UpdateUserDto } from './dto/update-user.dto.js';
-import { handlePrismaError } from '../../common/prisma-error.helper.js';
-import { JobsService } from '../jobs/jobs.service.js';
+
+const profileInclude = {
+  services: true,
+  qualifications: true,
+  portfolioItems: { orderBy: { sortOrder: 'asc' as const } },
+  messageTemplates: { orderBy: { createdAt: 'asc' as const } },
+  documents: { orderBy: { createdAt: 'asc' as const } },
+} satisfies Prisma.TradespersonProfileInclude;
+
+type FullProfile = Prisma.TradespersonProfileGetPayload<{
+  include: typeof profileInclude;
+}>;
 
 @Injectable()
 export class UsersService {
+  private readonly logger = new Logger(UsersService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly uploads: UploadsService,
     private readonly postcode: PostcodeService,
     private readonly jobs: JobsService,
+    private readonly hiring: HiringService,
+    private readonly credits: CreditsService,
   ) {}
 
-  // ── GET /users/:username — public profile ─────────────────────────────────
-
-  async getPublicProfile(username: string) {
+  private async getProfileOrThrow(userId: string) {
     const profile = await this.prisma.tradespersonProfile.findUnique({
-      where: { username },
+      where: { userId },
+    });
+    if (!profile) throw new NotFoundException('Tradesperson profile not found');
+    return profile;
+  }
+
+  // ── Public profile ────────────────────────────────────────────────────────
+
+  /** Visible to everyone once approved; the owner can always preview their own. */
+  async getPublicProfile(username: string, viewerId?: string) {
+    const profile = await this.prisma.tradespersonProfile.findUnique({
+      where: { username: username.replace(/^@/, '') },
       include: {
         user: {
           select: {
@@ -37,6 +69,7 @@ export class UsersService {
             name: true,
             avatarUrl: true,
             createdAt: true,
+            accountStatus: true,
           },
         },
         services: true,
@@ -44,26 +77,35 @@ export class UsersService {
         portfolioItems: { orderBy: { sortOrder: 'asc' } },
       },
     });
+    const isOwner = !!profile && profile.userId === viewerId;
+    if (
+      !profile ||
+      profile.user.accountStatus !== 'ACTIVE' ||
+      (profile.verificationStatus !== 'APPROVED' && !isOwner)
+    ) {
+      throw new NotFoundException('Profile not found');
+    }
 
-    if (!profile) throw new NotFoundException('Profile not found');
-
-    // Fetch recent reviews (up to 10)
-    const reviews = await this.prisma.review.findMany({
-      where: { subjectId: profile.userId },
-      orderBy: { createdAt: 'desc' },
-      take: 10,
-      include: {
-        author: { select: { name: true, avatarUrl: true } },
-        reply: { select: { body: true, createdAt: true } },
-      },
-    });
-
-    // Rating breakdown
-    const allRatings = await this.prisma.review.groupBy({
-      by: ['rating'],
-      where: { subjectId: profile.userId },
-      _count: { rating: true },
-    });
+    const visible = { subjectId: profile.userId, hiddenAt: null };
+    const [reviews, allRatings] = await Promise.all([
+      this.prisma.review.findMany({
+        where: visible,
+        orderBy: { createdAt: 'desc' },
+        take: 10,
+        include: {
+          author: {
+            select: { name: true, avatarUrl: true, accountStatus: true },
+          },
+          job: { select: { title: true, placeName: true } },
+          reply: { select: { body: true, createdAt: true } },
+        },
+      }),
+      this.prisma.review.groupBy({
+        by: ['rating'],
+        where: visible,
+        _count: { rating: true },
+      }),
+    ]);
     const ratingBreakdown: Record<string, number> = {
       '1': 0,
       '2': 0,
@@ -71,9 +113,8 @@ export class UsersService {
       '4': 0,
       '5': 0,
     };
-    for (const r of allRatings) {
+    for (const r of allRatings)
       ratingBreakdown[String(r.rating)] = r._count.rating;
-    }
 
     return {
       username: profile.username,
@@ -82,16 +123,19 @@ export class UsersService {
       trade: profile.trade,
       avatarUrl: profile.user.avatarUrl,
       bio: profile.bio,
-      postcode: profile.postcode,
+      // Only the district is public — a sole trader's postcode is often their home.
+      location: postcodeDistrict(profile.postcode),
       memberSince: profile.user.createdAt,
       verified: profile.verificationStatus === 'APPROVED',
+      isOwnerPreview: isOwner && profile.verificationStatus !== 'APPROVED',
       guarantee: profile.guarantee,
+      responseTime: profile.responseTime,
       avgRating: profile.avgRating,
       reviewCount: profile.reviewCount,
       completedJobs: profile.completedJobs,
       badges: this.computeBadges(profile),
       workRadiusMiles: profile.workRadiusMiles,
-      services: profile.services.map((s) => s.serviceSlug),
+      services: [...new Set(profile.services.map((s) => s.serviceSlug))],
       qualifications: profile.qualifications.map((q) => ({
         name: q.name,
         verified: q.verified,
@@ -112,11 +156,16 @@ export class UsersService {
       ratingBreakdown,
       reviews: reviews.map((r) => ({
         id: r.id,
-        authorName: r.author.name,
-        authorAvatar: r.author.avatarUrl,
+        authorName:
+          r.author.accountStatus === 'DELETED'
+            ? 'Former customer'
+            : r.author.name.split(' ')[0],
+        authorAvatar:
+          r.author.accountStatus === 'DELETED' ? null : r.author.avatarUrl,
         rating: r.rating,
         comment: r.comment,
-        jobTitle: '',
+        jobTitle: r.job.title,
+        location: r.job.placeName,
         createdAt: r.createdAt,
         reply: r.reply
           ? { body: r.reply.body, createdAt: r.reply.createdAt }
@@ -125,28 +174,18 @@ export class UsersService {
     };
   }
 
-  // ── GET /users/me/profile — own tradesperson profile ──────────────────────
+  // ── Own tradesperson profile ──────────────────────────────────────────────
 
-  async getMyProfile(userId: string) {
-    const [profile, user] = await Promise.all([
-      this.prisma.tradespersonProfile.findUnique({
-        where: { userId },
-        include: {
-          services: true,
-          qualifications: true,
-          portfolioItems: { orderBy: { sortOrder: 'asc' } },
-          messageTemplates: { orderBy: { createdAt: 'asc' } },
-          documents: { orderBy: { createdAt: 'asc' } },
-        },
-      }),
-      this.prisma.user.findUnique({
-        where: { id: userId },
-        select: { phone: true, email: true },
-      }),
-    ]);
-
-    if (!profile) throw new NotFoundException('Tradesperson profile not found');
-
+  private formatOwnProfile(
+    profile: FullProfile,
+    user: { phone: string | null; email: string } | null,
+  ) {
+    const checklist = {
+      idDocument: !!profile.idDocumentKey,
+      services: profile.services.length > 0,
+      workArea: profile.latitude !== null && !!profile.postcode,
+      phone: !!user?.phone,
+    };
     return {
       id: profile.id,
       username: profile.username,
@@ -156,7 +195,21 @@ export class UsersService {
       postcode: profile.postcode,
       workRadiusMiles: profile.workRadiusMiles,
       verificationStatus: profile.verificationStatus,
+      verification: {
+        status: profile.verificationStatus,
+        note: profile.verificationNote,
+        submittedAt: profile.submittedAt,
+        verifiedAt: profile.verifiedAt,
+        idDocumentName: profile.idDocumentName,
+        idDocumentUploadedAt: profile.idDocumentUploadedAt,
+        checklist,
+        canSubmit:
+          ['NOT_SUBMITTED', 'REJECTED', 'INFO_REQUESTED'].includes(
+            profile.verificationStatus,
+          ) && Object.values(checklist).every(Boolean),
+      },
       guarantee: profile.guarantee,
+      responseTime: profile.responseTime,
       avgRating: profile.avgRating,
       reviewCount: profile.reviewCount,
       completedJobs: profile.completedJobs,
@@ -165,7 +218,7 @@ export class UsersService {
       services: profile.services.map((s) => ({
         id: s.id,
         serviceSlug: s.serviceSlug,
-        tradeSlug: s.tradeSlug,
+        tradeSlug: s.tradeSlug || undefined,
       })),
       qualifications: profile.qualifications.map((q) => ({
         id: q.id,
@@ -201,119 +254,180 @@ export class UsersService {
     };
   }
 
-  // ── PATCH /users/me/profile ───────────────────────────────────────────────
+  async getMyProfile(userId: string) {
+    const [profile, user] = await Promise.all([
+      this.prisma.tradespersonProfile.findUnique({
+        where: { userId },
+        include: profileInclude,
+      }),
+      this.prisma.user.findUnique({
+        where: { id: userId },
+        select: { phone: true, email: true },
+      }),
+    ]);
+    if (!profile) throw new NotFoundException('Tradesperson profile not found');
+    return this.formatOwnProfile(profile, user);
+  }
 
   async updateMyProfile(userId: string, dto: UpdateProfileDto) {
+    const profile = await this.getProfileOrThrow(userId);
+
+    let geo:
+      | { latitude: number; longitude: number; postcode: string }
+      | undefined;
+    if (
+      dto.postcode &&
+      dto.postcode.replace(/\s/g, '').toUpperCase() !==
+        (profile.postcode ?? '').replace(/\s/g, '')
+    ) {
+      geo = await this.postcode.geocode(dto.postcode);
+    }
+
+    const updated = await this.prisma.tradespersonProfile.update({
+      where: { userId },
+      data: {
+        companyName: dto.companyName,
+        bio: dto.bio,
+        trade: dto.trade,
+        workRadiusMiles: dto.workRadiusMiles,
+        guarantee: dto.guarantee,
+        responseTime: dto.responseTime,
+        publicLiability: dto.publicLiability,
+        employersLiability: dto.employersLiability,
+        professionalIndemnity: dto.professionalIndemnity,
+        ...(geo
+          ? {
+              postcode: geo.postcode,
+              latitude: geo.latitude,
+              longitude: geo.longitude,
+            }
+          : {}),
+      },
+      include: profileInclude,
+    });
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { phone: true, email: true },
+    });
+
+    if (geo || dto.workRadiusMiles !== undefined) {
+      this.jobs
+        .backfillLeadsForTradesperson(userId)
+        .catch((e: Error) => this.logger.warn(e.message));
+    }
+    return this.formatOwnProfile(updated, user);
+  }
+
+  async refreshLeads(userId: string) {
+    const created = await this.jobs.backfillLeadsForTradesperson(userId);
+    return { created };
+  }
+
+  // ── Verification ──────────────────────────────────────────────────────────
+
+  async uploadIdDocument(userId: string, file: Express.Multer.File) {
+    const profile = await this.getProfileOrThrow(userId);
+    if (profile.verificationStatus === 'PENDING') {
+      throw new BadRequestException(
+        'Your profile is being reviewed — you can update documents once the review is complete',
+      );
+    }
+    const key = await this.uploads.uploadPrivate(
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+      'id-documents',
+    );
+    await this.prisma.tradespersonProfile.update({
+      where: { userId },
+      data: {
+        idDocumentKey: key,
+        idDocumentUrl: null,
+        idDocumentName: file.originalname.slice(0, 200),
+        idDocumentUploadedAt: new Date(),
+      },
+    });
+    if (profile.idDocumentKey)
+      void this.uploads.deletePrivate(profile.idDocumentKey);
+    return {
+      message: 'ID document uploaded.',
+      idDocumentName: file.originalname,
+    };
+  }
+
+  /** Send the profile to the admin verification queue. */
+  async submitForVerification(userId: string) {
     const profile = await this.prisma.tradespersonProfile.findUnique({
       where: { userId },
+      include: profileInclude,
     });
     if (!profile) throw new NotFoundException('Tradesperson profile not found');
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: { phone: true, email: true },
+    });
+    const own = this.formatOwnProfile(profile, user);
 
-    let lat: number | undefined;
-    let lng: number | undefined;
-
-    if (dto.postcode && dto.postcode !== profile.postcode) {
-      const geo = await this.postcode.geocode(dto.postcode);
-      lat = geo.latitude;
-      lng = geo.longitude;
+    if (profile.verificationStatus === 'PENDING') return own;
+    if (profile.verificationStatus === 'APPROVED')
+      throw new BadRequestException('Your profile is already verified');
+    if (profile.verificationStatus === 'SUSPENDED') {
+      throw new ForbiddenException(
+        'Your account is suspended. Please contact support@thebuildernetwork.com.',
+      );
     }
+    const missing = Object.entries(own.verification.checklist)
+      .filter(([, ok]) => !ok)
+      .map(
+        ([k]) =>
+          ({
+            idDocument: 'an ID document',
+            services: 'at least one service',
+            workArea: 'your work area',
+            phone: 'a phone number',
+          })[k],
+      );
+    if (missing.length)
+      throw new BadRequestException(
+        `Please add ${missing.join(', ')} before submitting`,
+      );
 
-    const updated = await this.prisma.tradespersonProfile
-      .update({
-        where: { userId },
-        data: {
-          companyName: dto.companyName,
-          bio: dto.bio,
-          trade: dto.trade,
-          postcode: dto.postcode?.toUpperCase().trim(),
-          workRadiusMiles: dto.workRadiusMiles,
-          guarantee: dto.guarantee,
-          responseTime: dto.responseTime,
-          ...(lat !== undefined ? { latitude: lat, longitude: lng } : {}),
-        },
-        include: {
-          services: true,
-          qualifications: true,
-          portfolioItems: { orderBy: { sortOrder: 'asc' } },
-          messageTemplates: { orderBy: { createdAt: 'asc' } },
-          documents: { orderBy: { createdAt: 'asc' } },
-        },
-      })
-      .catch(handlePrismaError);
-
-    const result = {
-      id: updated.id,
-      username: updated.username,
-      companyName: updated.companyName,
-      bio: updated.bio,
-      trade: updated.trade,
-      postcode: updated.postcode,
-      workRadiusMiles: updated.workRadiusMiles,
-      verificationStatus: updated.verificationStatus,
-      guarantee: updated.guarantee,
-      avgRating: updated.avgRating,
-      reviewCount: updated.reviewCount,
-      completedJobs: updated.completedJobs,
-      services: updated.services.map((s) => ({
-        id: s.id,
-        serviceSlug: s.serviceSlug,
-        tradeSlug: s.tradeSlug,
-      })),
-      qualifications: updated.qualifications.map((q) => ({
-        id: q.id,
-        name: q.name,
-        verified: q.verified,
-        year: q.year,
-      })),
-      portfolioItems: updated.portfolioItems.map((p) => ({
-        id: p.id,
-        imageUrl: p.imageUrl,
-        title: p.title,
-        category: p.category,
-      })),
-      insurance: {
-        publicLiability: updated.publicLiability,
-        employersLiability: updated.employersLiability,
-        professionalIndemnity: updated.professionalIndemnity,
-        verified: updated.insuranceVerified,
-        expiresAt: updated.insuranceExpiresAt,
-      },
-      messageTemplates: updated.messageTemplates.map((t) => ({
-        id: t.id,
-        name: t.name,
-        body: t.body,
-      })),
-      documents: updated.documents.map((d) => ({
-        id: d.id,
-        fileUrl: d.fileUrl,
-        fileName: d.fileName,
-        mimeType: d.mimeType,
-        createdAt: d.createdAt,
-      })),
-    };
-
-    // If postcode or work radius changed, backfill leads for existing ACTIVE jobs
-    if (dto.postcode || dto.workRadiusMiles !== undefined) {
-      this.jobs.backfillLeadsForTradesperson(userId).catch(() => {});
-    }
-
-    return result;
+    const updated = await this.prisma.tradespersonProfile.update({
+      where: { userId },
+      data: { verificationStatus: 'PENDING', submittedAt: new Date() },
+      include: profileInclude,
+    });
+    return this.formatOwnProfile(updated, user);
   }
 
-  // ── POST /users/me/leads/refresh ──────────────────────────────────────────
-
-  async refreshLeads(userId: string): Promise<void> {
-    await this.jobs.backfillLeadsForTradesperson(userId);
-  }
-
-  // ── PATCH /users/me — update name/phone ───────────────────────────────────
+  // ── Account (both roles) ──────────────────────────────────────────────────
 
   async updateUser(userId: string, dto: UpdateUserDto) {
-    const user = await this.prisma.user.update({
+    if (dto.phone) {
+      const taken = await this.prisma.user.findFirst({
+        where: {
+          phone: dto.phone,
+          id: { not: userId },
+          accountStatus: { not: 'DELETED' },
+        },
+        select: { id: true },
+      });
+      if (taken)
+        throw new ConflictException(
+          'That phone number is already used by another account',
+        );
+    }
+    return this.prisma.user.update({
       where: { id: userId },
       data: {
         name: dto.name,
         phone: dto.phone,
+        ...(dto.marketingOptIn !== undefined
+          ? {
+              marketingOptIn: dto.marketingOptIn,
+              marketingOptInAt: dto.marketingOptIn ? new Date() : null,
+            }
+          : {}),
       },
       select: {
         id: true,
@@ -323,24 +437,181 @@ export class UsersService {
         phone: true,
         avatarUrl: true,
         emailVerified: true,
+        marketingOptIn: true,
+        notificationsPaused: true,
         createdAt: true,
       },
     });
-    return user;
   }
 
-  // ── POST /users/me/avatar ─────────────────────────────────────────────────
+  async setNotificationsPaused(userId: string, paused: boolean) {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: { notificationsPaused: paused },
+    });
+    return { notificationsPaused: paused };
+  }
+
+  /**
+   * Delete account (MyBuilder: profile, photos and personal data removed).
+   * We anonymise rather than hard-delete: a hard delete would cascade into the
+   * other party's jobs, conversations and reviews. Open jobs are closed, open
+   * interest is withdrawn (reserved credits released), credits are forfeited,
+   * and every session is revoked.
+   */
+  async deleteAccount(userId: string, password: string) {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      include: {
+        tradespersonProfile: {
+          include: { portfolioItems: true, documents: true },
+        },
+      },
+    });
+    if (!user || user.accountStatus === 'DELETED')
+      throw new NotFoundException('Account not found');
+    if (!(await bcrypt.compare(password, user.passwordHash))) {
+      throw new BadRequestException('Your password is incorrect');
+    }
+
+    const filesToDelete: string[] = [];
+    const privateToDelete: string[] = [];
+    if (user.avatarUrl) filesToDelete.push(user.avatarUrl);
+    const tp = user.tradespersonProfile;
+    if (tp) {
+      filesToDelete.push(
+        ...tp.portfolioItems.map((p) => p.imageUrl),
+        ...tp.documents.map((d) => d.fileUrl),
+      );
+      if (tp.idDocumentKey) privateToDelete.push(tp.idDocumentKey);
+    }
+
+    await this.prisma.$transaction(async (tx) => {
+      // Homeowner side: close every open job and release trades' reserved credits.
+      const openJobs = await tx.job.findMany({
+        where: { homeownerId: userId, status: { in: ['ACTIVE', 'HIRED'] } },
+        select: { id: true },
+      });
+      for (const job of openJobs) {
+        await tx.job.update({
+          where: { id: job.id },
+          data: {
+            status: 'CLOSED',
+            closedAt: new Date(),
+            closeReason: 'Account deleted',
+          },
+        });
+        await this.hiring.closeOpenLeads(
+          tx,
+          job.id,
+          'Customer account deleted',
+        );
+      }
+
+      // Trade side: withdraw open interest (releasing reserves) and stop matching.
+      const interested = await tx.lead.findMany({
+        where: { tradespersonId: userId, status: 'INTERESTED' },
+      });
+      for (const lead of interested) {
+        await this.credits.release(
+          tx,
+          userId,
+          lead.id,
+          lead.creditsReserved,
+          'Account deleted',
+        );
+        await tx.lead.update({
+          where: { id: lead.id },
+          data: {
+            status: 'WITHDRAWN',
+            withdrawnAt: new Date(),
+            creditsReserved: 0,
+          },
+        });
+      }
+      await tx.lead.updateMany({
+        where: { tradespersonId: userId, status: 'AVAILABLE' },
+        data: { status: 'NOT_SELECTED', notSelectedAt: new Date() },
+      });
+
+      if (tp) {
+        await tx.tradespersonService.deleteMany({
+          where: { tradespersonProfileId: tp.id },
+        });
+        await tx.portfolioItem.deleteMany({
+          where: { tradespersonProfileId: tp.id },
+        });
+        await tx.profileDocument.deleteMany({
+          where: { tradespersonProfileId: tp.id },
+        });
+        await tx.qualification.deleteMany({
+          where: { tradespersonProfileId: tp.id },
+        });
+        await tx.messageTemplate.deleteMany({
+          where: { tradespersonProfileId: tp.id },
+        });
+        await tx.tradespersonProfile.update({
+          where: { id: tp.id },
+          data: {
+            username: `deleted-${tp.id}`,
+            companyName: null,
+            bio: null,
+            trade: null,
+            postcode: null,
+            latitude: null,
+            longitude: null,
+            idDocumentKey: null,
+            idDocumentUrl: null,
+            idDocumentName: null,
+            publicLiability: null,
+            employersLiability: null,
+            professionalIndemnity: null,
+          },
+        });
+      }
+
+      const credit = await tx.leadCredit.findUnique({ where: { userId } });
+      if (credit && credit.balance > 0) {
+        await this.credits.debit(tx, userId, credit.balance, 'ADMIN_DEBIT', {
+          note: 'Forfeited on account deletion',
+        });
+      }
+
+      await tx.notification.deleteMany({ where: { userId } });
+      await tx.user.update({
+        where: { id: userId },
+        data: {
+          email: `deleted+${userId}@deleted.thebuildernetwork.com`,
+          name: 'Former member',
+          username: null,
+          phone: null,
+          avatarUrl: null,
+          passwordHash: await bcrypt.hash(randomBytes(32).toString('hex'), 10),
+          passwordResetToken: null,
+          emailVerifyToken: null,
+          marketingOptIn: false,
+          accountStatus: 'DELETED',
+          deletedAt: new Date(),
+          tokenVersion: { increment: 1 },
+        },
+      });
+    });
+
+    await Promise.all([
+      ...filesToDelete.map((u) => this.uploads.deleteFile(u)),
+      ...privateToDelete.map((k) => this.uploads.deletePrivate(k)),
+    ]);
+    return { deleted: true };
+  }
+
+  // ── Avatar ────────────────────────────────────────────────────────────────
 
   async uploadAvatar(userId: string, file: Express.Multer.File) {
-    // Delete old avatar from S3 if present
     const existing = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { avatarUrl: true },
     });
-    if (existing?.avatarUrl) {
-      await this.uploads.deleteFile(existing.avatarUrl);
-    }
-
+    // Upload the new file before deleting the old one, so a failed upload keeps the current avatar.
     const avatarUrl = await this.uploads.uploadFile(
       file.buffer,
       file.originalname,
@@ -351,109 +622,79 @@ export class UsersService {
       where: { id: userId },
       data: { avatarUrl },
     });
+    if (existing?.avatarUrl) void this.uploads.deleteFile(existing.avatarUrl);
     return { avatarUrl };
   }
-
-  // ── DELETE /users/me/avatar ───────────────────────────────────────────────
 
   async deleteAvatar(userId: string) {
     const user = await this.prisma.user.findUnique({
       where: { id: userId },
       select: { avatarUrl: true },
     });
-
-    if (user?.avatarUrl) {
-      await this.uploads.deleteFile(user.avatarUrl);
-    }
-
     await this.prisma.user.update({
       where: { id: userId },
       data: { avatarUrl: null },
     });
+    if (user?.avatarUrl) void this.uploads.deleteFile(user.avatarUrl);
   }
 
-  // ── POST /users/me/id-document ────────────────────────────────────────────
-
-  async uploadIdDocument(userId: string, file: Express.Multer.File) {
-    const profile = await this.prisma.tradespersonProfile.findUnique({
-      where: { userId },
-    });
-    if (!profile) throw new NotFoundException('Tradesperson profile not found');
-
-    const documentUrl = await this.uploads.uploadFile(
-      file.buffer,
-      file.originalname,
-      file.mimetype,
-      'id-documents',
-    );
-
-    await this.prisma.tradespersonProfile.update({
-      where: { userId },
-      data: {
-        idDocumentUrl: documentUrl,
-        verificationStatus: 'PENDING',
-      },
-    });
-
-    return { message: 'Document uploaded. Verification pending.' };
-  }
-
-  // ── POST /users/me/services ───────────────────────────────────────────────
+  // ── Services ──────────────────────────────────────────────────────────────
 
   async addService(userId: string, dto: AddServiceDto) {
-    const profile = await this.prisma.tradespersonProfile.findUnique({
-      where: { userId },
+    const profile = await this.getProfileOrThrow(userId);
+    const service = await this.prisma.service.findUnique({
+      where: { slug: dto.serviceSlug },
     });
-    if (!profile) throw new NotFoundException('Tradesperson profile not found');
+    if (!service) throw new BadRequestException('Unknown service');
+    if (dto.tradeSlug) {
+      const trade = await this.prisma.trade.findUnique({
+        where: { slug: dto.tradeSlug },
+      });
+      if (!trade || trade.serviceSlug !== dto.serviceSlug)
+        throw new BadRequestException('Unknown trade for this service');
+    }
 
     try {
-      const service = await this.prisma.tradespersonService.create({
+      const created = await this.prisma.tradespersonService.create({
         data: {
           tradespersonProfileId: profile.id,
           serviceSlug: dto.serviceSlug,
-          tradeSlug: dto.tradeSlug,
+          tradeSlug: dto.tradeSlug ?? '',
         },
       });
-
-      // Backfill leads for existing ACTIVE jobs matching this new service
-      this.jobs.backfillLeadsForTradesperson(userId).catch(() => {});
-
+      this.jobs
+        .backfillLeadsForTradesperson(userId)
+        .catch((e: Error) => this.logger.warn(e.message));
       return {
-        id: service.id,
-        serviceSlug: service.serviceSlug,
-        tradeSlug: service.tradeSlug,
+        id: created.id,
+        serviceSlug: created.serviceSlug,
+        tradeSlug: created.tradeSlug || undefined,
       };
-    } catch {
-      throw new ConflictException('Service already added');
+    } catch (err) {
+      if (
+        err instanceof Prisma.PrismaClientKnownRequestError &&
+        err.code === 'P2002'
+      ) {
+        throw new ConflictException('Service already added');
+      }
+      throw err;
     }
   }
 
-  // ── DELETE /users/me/services/:id ─────────────────────────────────────────
-
   async removeService(userId: string, serviceId: string) {
-    const profile = await this.prisma.tradespersonProfile.findUnique({
-      where: { userId },
-    });
-    if (!profile) throw new NotFoundException('Tradesperson profile not found');
-
+    const profile = await this.getProfileOrThrow(userId);
     const service = await this.prisma.tradespersonService.findUnique({
       where: { id: serviceId },
     });
-    if (!service || service.tradespersonProfileId !== profile.id) {
-      throw new ForbiddenException('Service not found');
-    }
-
+    if (!service || service.tradespersonProfileId !== profile.id)
+      throw new NotFoundException('Service not found');
     await this.prisma.tradespersonService.delete({ where: { id: serviceId } });
   }
 
-  // ── POST /users/me/qualifications ─────────────────────────────────────────
+  // ── Qualifications ────────────────────────────────────────────────────────
 
   async addQualification(userId: string, dto: AddQualificationDto) {
-    const profile = await this.prisma.tradespersonProfile.findUnique({
-      where: { userId },
-    });
-    if (!profile) throw new NotFoundException('Tradesperson profile not found');
-
+    const profile = await this.getProfileOrThrow(userId);
     const qual = await this.prisma.qualification.create({
       data: {
         tradespersonProfileId: profile.id,
@@ -469,25 +710,17 @@ export class UsersService {
     };
   }
 
-  // ── DELETE /users/me/qualifications/:id ───────────────────────────────────
-
   async removeQualification(userId: string, qualId: string) {
-    const profile = await this.prisma.tradespersonProfile.findUnique({
-      where: { userId },
-    });
-    if (!profile) throw new NotFoundException('Tradesperson profile not found');
-
+    const profile = await this.getProfileOrThrow(userId);
     const qual = await this.prisma.qualification.findUnique({
       where: { id: qualId },
     });
-    if (!qual || qual.tradespersonProfileId !== profile.id) {
-      throw new ForbiddenException('Qualification not found');
-    }
-
+    if (!qual || qual.tradespersonProfileId !== profile.id)
+      throw new NotFoundException('Qualification not found');
     await this.prisma.qualification.delete({ where: { id: qualId } });
   }
 
-  // ── POST /users/me/portfolio ──────────────────────────────────────────────
+  // ── Portfolio ─────────────────────────────────────────────────────────────
 
   async uploadPortfolioItem(
     userId: string,
@@ -495,27 +728,27 @@ export class UsersService {
     title?: string,
     category?: string,
   ) {
-    const profile = await this.prisma.tradespersonProfile.findUnique({
-      where: { userId },
+    const profile = await this.getProfileOrThrow(userId);
+    const count = await this.prisma.portfolioItem.count({
+      where: { tradespersonProfileId: profile.id },
     });
-    if (!profile) throw new NotFoundException('Tradesperson profile not found');
-
+    if (count >= 50)
+      throw new BadRequestException('You can add up to 50 portfolio photos');
     const imageUrl = await this.uploads.uploadFile(
       file.buffer,
       file.originalname,
       file.mimetype,
       'portfolio',
     );
-
     const item = await this.prisma.portfolioItem.create({
       data: {
         tradespersonProfileId: profile.id,
         imageUrl,
-        title,
-        category,
+        title: title?.slice(0, 120),
+        category: category?.slice(0, 100),
+        sortOrder: count,
       },
     });
-
     return {
       id: item.id,
       imageUrl: item.imageUrl,
@@ -524,89 +757,98 @@ export class UsersService {
     };
   }
 
-  // ── DELETE /users/me/portfolio/:id ────────────────────────────────────────
-
   async deletePortfolioItem(userId: string, itemId: string) {
-    const profile = await this.prisma.tradespersonProfile.findUnique({
-      where: { userId },
-    });
-    if (!profile) throw new NotFoundException('Tradesperson profile not found');
-
+    const profile = await this.getProfileOrThrow(userId);
     const item = await this.prisma.portfolioItem.findUnique({
       where: { id: itemId },
     });
-    if (!item || item.tradespersonProfileId !== profile.id) {
-      throw new ForbiddenException('Portfolio item not found');
-    }
-
-    // Delete from S3
-    await this.uploads.deleteFile(item.imageUrl);
+    if (!item || item.tradespersonProfileId !== profile.id)
+      throw new NotFoundException('Portfolio item not found');
     await this.prisma.portfolioItem.delete({ where: { id: itemId } });
+    void this.uploads.deleteFile(item.imageUrl);
   }
 
-  // ── POST /users/me/message-templates ─────────────────────────────────────
+  // ── Message templates ─────────────────────────────────────────────────────
 
   async createMessageTemplate(userId: string, dto: CreateMessageTemplateDto) {
-    const profile = await this.prisma.tradespersonProfile.findUnique({
-      where: { userId },
-    });
-    if (!profile) throw new NotFoundException('Tradesperson profile not found');
-
-    const template = await this.prisma.messageTemplate.create({
+    const profile = await this.getProfileOrThrow(userId);
+    const t = await this.prisma.messageTemplate.create({
       data: {
         tradespersonProfileId: profile.id,
         name: dto.name,
         body: dto.body,
       },
     });
-    return { id: template.id, name: template.name, body: template.body };
+    return { id: t.id, name: t.name, body: t.body };
   }
-
-  // ── PATCH /users/me/message-templates/:id ────────────────────────────────
 
   async updateMessageTemplate(
     userId: string,
     templateId: string,
     dto: UpdateMessageTemplateDto,
   ) {
-    const profile = await this.prisma.tradespersonProfile.findUnique({
-      where: { userId },
-    });
-    if (!profile) throw new NotFoundException('Tradesperson profile not found');
-
+    const profile = await this.getProfileOrThrow(userId);
     const existing = await this.prisma.messageTemplate.findUnique({
       where: { id: templateId },
     });
-    if (!existing || existing.tradespersonProfileId !== profile.id) {
-      throw new ForbiddenException('Template not found');
-    }
-
-    const updated = await this.prisma.messageTemplate.update({
+    if (!existing || existing.tradespersonProfileId !== profile.id)
+      throw new NotFoundException('Template not found');
+    const t = await this.prisma.messageTemplate.update({
       where: { id: templateId },
       data: { name: dto.name, body: dto.body },
     });
-    return { id: updated.id, name: updated.name, body: updated.body };
+    return { id: t.id, name: t.name, body: t.body };
   }
 
-  // ── DELETE /users/me/message-templates/:id ────────────────────────────────
-
   async deleteMessageTemplate(userId: string, templateId: string) {
-    const profile = await this.prisma.tradespersonProfile.findUnique({
-      where: { userId },
-    });
-    if (!profile) throw new NotFoundException('Tradesperson profile not found');
-
+    const profile = await this.getProfileOrThrow(userId);
     const existing = await this.prisma.messageTemplate.findUnique({
       where: { id: templateId },
     });
-    if (!existing || existing.tradespersonProfileId !== profile.id) {
-      throw new ForbiddenException('Template not found');
-    }
-
+    if (!existing || existing.tradespersonProfileId !== profile.id)
+      throw new NotFoundException('Template not found');
     await this.prisma.messageTemplate.delete({ where: { id: templateId } });
   }
 
-  // ── Helper: compute badge labels ──────────────────────────────────────────
+  // ── Profile documents (certificates, insurance) ──────────────────────────
+
+  async uploadDocument(userId: string, file: Express.Multer.File) {
+    const profile = await this.getProfileOrThrow(userId);
+    const fileUrl = await this.uploads.uploadFile(
+      file.buffer,
+      file.originalname,
+      file.mimetype,
+      'profile-documents',
+    );
+    const doc = await this.prisma.profileDocument.create({
+      data: {
+        tradespersonProfileId: profile.id,
+        fileUrl,
+        fileName: file.originalname.slice(0, 200),
+        mimeType: file.mimetype,
+      },
+    });
+    return {
+      id: doc.id,
+      fileUrl: doc.fileUrl,
+      fileName: doc.fileName,
+      mimeType: doc.mimeType,
+      createdAt: doc.createdAt,
+    };
+  }
+
+  async deleteDocument(userId: string, docId: string) {
+    const profile = await this.getProfileOrThrow(userId);
+    const doc = await this.prisma.profileDocument.findUnique({
+      where: { id: docId },
+    });
+    if (!doc || doc.tradespersonProfileId !== profile.id)
+      throw new NotFoundException('Document not found');
+    await this.prisma.profileDocument.delete({ where: { id: docId } });
+    void this.uploads.deleteFile(doc.fileUrl);
+  }
+
+  // ── Helpers ───────────────────────────────────────────────────────────────
 
   private computeBadges(profile: {
     verificationStatus: string;
@@ -624,61 +866,8 @@ export class UsersService {
     if (
       profile.responseTime &&
       profile.responseTime.toLowerCase().includes('hour')
-    ) {
+    )
       badges.push('Responds Fast');
-    }
     return badges;
-  }
-
-  // ── POST /users/me/documents ──────────────────────────────────────────────
-
-  async uploadDocument(userId: string, file: Express.Multer.File) {
-    const profile = await this.prisma.tradespersonProfile.findUnique({
-      where: { userId },
-    });
-    if (!profile) throw new NotFoundException('Tradesperson profile not found');
-
-    const fileUrl = await this.uploads.uploadFile(
-      file.buffer,
-      file.originalname,
-      file.mimetype,
-      'profile-documents',
-    );
-
-    const doc = await this.prisma.profileDocument.create({
-      data: {
-        tradespersonProfileId: profile.id,
-        fileUrl,
-        fileName: file.originalname,
-        mimeType: file.mimetype,
-      },
-    });
-
-    return {
-      id: doc.id,
-      fileUrl: doc.fileUrl,
-      fileName: doc.fileName,
-      mimeType: doc.mimeType,
-      createdAt: doc.createdAt,
-    };
-  }
-
-  // ── DELETE /users/me/documents/:id ───────────────────────────────────────
-
-  async deleteDocument(userId: string, docId: string) {
-    const profile = await this.prisma.tradespersonProfile.findUnique({
-      where: { userId },
-    });
-    if (!profile) throw new NotFoundException('Tradesperson profile not found');
-
-    const doc = await this.prisma.profileDocument.findUnique({
-      where: { id: docId },
-    });
-    if (!doc || doc.tradespersonProfileId !== profile.id) {
-      throw new ForbiddenException('Document not found');
-    }
-
-    await this.uploads.deleteFile(doc.fileUrl);
-    await this.prisma.profileDocument.delete({ where: { id: docId } });
   }
 }
