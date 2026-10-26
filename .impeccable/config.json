@@ -1,0 +1,14 @@
+{
+  "detector": {
+    "ignoreRules": [],
+    "ignoreFiles": [],
+    "ignoreValues": [
+      {
+        "rule": "overused-font",
+        "value": "arial",
+        "createdAt": "2026-10-26T12:26:18.577Z",
+        "reason": "Claude: transactional email HTML in mail.service.ts must use a web-safe font stack; email clients don't load custom faces"
+      }
+    ]
+  }
+}
