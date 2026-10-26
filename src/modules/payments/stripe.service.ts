@@ -115,6 +115,8 @@ export class StripeService {
           },
         ],
         metadata,
+        // Always charge in GBP; refunds reverse credits pro rata on the GBP amount.
+        adaptive_pricing: { enabled: false },
         payment_intent_data: {
           metadata,
           description: `${pack.credits} lead credits`,

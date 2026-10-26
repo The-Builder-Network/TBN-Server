@@ -130,6 +130,8 @@ step('shortlisted: fee charged, contacts + chat unlocked');
 await call('POST', `/conversations/${resp.conversationId}/messages`, { token: T.token, body: { body: 'When suits you?' } });
 const msgs = await call('GET', `/conversations/${resp.conversationId}/messages`, { token: H.token });
 assert.equal(msgs.data.at(-1)?.body ?? msgs.data[0]?.body, 'When suits you?');
+const convs = await call('GET', '/conversations', { token: H.token });
+assert.equal(convs.conversations.find((c) => c.id === resp.conversationId).otherParty.id, T.user.id);
 step('messaging works');
 
 await call('POST', `/jobs/${job.id}/leads/${lead.id}/hire`, { token: H.token });

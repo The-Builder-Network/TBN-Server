@@ -57,7 +57,7 @@ export class MessagingService {
     },
   ) {
     const other =
-      conv.homeownerId === userId ? conv.homeowner : conv.tradesperson;
+      conv.homeownerId === userId ? conv.tradesperson : conv.homeowner;
     const deleted = other.accountStatus === 'DELETED';
     return {
       id: conv.id,
