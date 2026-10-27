@@ -2,12 +2,14 @@ import {
   Body,
   Controller,
   Get,
+  Header,
   HttpCode,
   HttpStatus,
   Param,
   Patch,
   Post,
   Query,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
 import { AdminService } from './admin.service.js';
@@ -44,6 +46,21 @@ export class AdminController {
   @Get('tradespeople/:userId')
   tradesperson(@Param('userId') userId: string) {
     return this.admin.getTradesperson(userId);
+  }
+
+  /** Streams the private ID document (no expiring links for the admin to refresh). */
+  @Get('tradespeople/:userId/id-document')
+  @Header('Cache-Control', 'private, no-store')
+  async idDocument(
+    @CurrentUser() u: JwtPayload,
+    @Param('userId') userId: string,
+  ) {
+    const doc = await this.admin.getIdDocument(u.sub, userId);
+    return new StreamableFile(doc.stream, {
+      type: doc.contentType,
+      length: doc.contentLength,
+      disposition: `inline; filename="${doc.fileName.replace(/[^\w.\- ]/g, '_')}"`,
+    });
   }
 
   @Post('tradespeople/:userId/approve')

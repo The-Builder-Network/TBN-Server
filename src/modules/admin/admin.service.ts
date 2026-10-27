@@ -237,16 +237,6 @@ export class AdminService {
       }),
     ]);
 
-    let idDocumentUrl: string | null = profile.idDocumentUrl;
-    if (profile.idDocumentKey) {
-      idDocumentUrl = await this.uploads
-        .presignedUrl(profile.idDocumentKey)
-        .catch((err: Error) => {
-          this.logger.warn(`Presign failed for ${userId}: ${err.message}`);
-          return null;
-        });
-    }
-
     const nameOf = new Map(serviceNames.map((s) => [s.slug, s.name]));
     const { reviewedBy, ...rest } = profile;
     return {
@@ -271,8 +261,9 @@ export class AdminService {
           tradeSlug: s.tradeSlug || null,
         })),
         reviewedByName: reviewedBy?.name ?? null,
-        idDocumentUrl,
-        idDocumentUrlExpiresInSeconds: profile.idDocumentKey ? 300 : null,
+        idDocumentUrl: undefined, // legacy public URL column
+        // The file itself is streamed from GET /admin/tradespeople/:userId/id-document.
+        hasIdDocument: !!profile.idDocumentKey,
       },
       credits: account,
       leads: Object.fromEntries(leadCounts.map((l) => [l.status, l._count])),
@@ -284,6 +275,26 @@ export class AdminService {
         createdAt: a.createdAt,
       })),
     };
+  }
+
+  /** A tradesperson's private ID document for streaming; every view is audit-logged. */
+  async getIdDocument(adminId: string, userId: string) {
+    const profile = await this.prisma.tradespersonProfile.findUnique({
+      where: { userId },
+      select: { idDocumentKey: true, idDocumentName: true },
+    });
+    if (!profile?.idDocumentKey) {
+      throw new NotFoundException('No ID document has been uploaded');
+    }
+    const file = await this.uploads.getPrivate(profile.idDocumentKey);
+    await this.audit(
+      this.prisma,
+      adminId,
+      'verification.view_id',
+      'USER',
+      userId,
+    );
+    return { ...file, fileName: profile.idDocumentName ?? 'id-document' };
   }
 
   private async setVerification(

@@ -3,6 +3,8 @@ import {
   InternalServerErrorException,
   Logger,
   BadRequestException,
+  NotFoundException,
+  ServiceUnavailableException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
@@ -11,10 +13,19 @@ import {
   DeleteObjectCommand,
   GetObjectCommand,
 } from '@aws-sdk/client-s3';
-import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
+import type { Readable } from 'stream';
 import { randomUUID } from 'crypto';
 import * as path from 'path';
 import { URL } from 'url';
+
+/** S3 error names meaning "our AWS credentials were refused", not a transient fault. */
+const CREDENTIAL_ERRORS = new Set([
+  'AccessDenied',
+  'InvalidAccessKeyId',
+  'SignatureDoesNotMatch',
+  'ExpiredToken',
+  'InvalidToken',
+]);
 
 // ── Allowed upload MIME types and their magic byte signatures ───────────────
 const ALLOWED_UPLOAD_TYPES: { mime: string; magic: Buffer }[] = [
@@ -107,9 +118,7 @@ export class UploadsService {
         }),
       );
     } catch (err) {
-      throw new InternalServerErrorException(
-        `Failed to upload file: ${(err as Error).message}`,
-      );
+      throw this.storageError(err, 'upload', key);
     }
 
     return `${this.cdnUrl}/${key}`;
@@ -117,7 +126,7 @@ export class UploadsService {
 
   /**
    * Upload a sensitive file (e.g. ID documents) under the `private/` prefix.
-   * Returns the S3 key only — never a public URL. Read it back with presignedUrl().
+   * Returns the S3 key only — never a public URL. Read it back with getPrivate().
    * Infra note: the CloudFront distribution must not serve the `private/*` path.
    */
   async uploadPrivate(
@@ -143,21 +152,62 @@ export class UploadsService {
         }),
       );
     } catch (err) {
-      throw new InternalServerErrorException(
-        `Failed to upload file: ${(err as Error).message}`,
-      );
+      throw this.storageError(err, 'upload', key);
     }
     return key;
   }
 
-  /** Short-lived (default 5 min) signed GET URL for a private object. */
-  presignedUrl(key: string, expiresInSeconds = 300): Promise<string> {
-    return getSignedUrl(
-      this.s3,
-      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
-      {
-        expiresIn: expiresInSeconds,
-      },
+  /**
+   * Read a private object so the API can stream it to an authorised caller.
+   * Errors carry admin-facing explanations (only admin routes read private files).
+   */
+  async getPrivate(key: string) {
+    try {
+      const res = await this.s3.send(
+        new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+      );
+      return {
+        stream: res.Body as Readable,
+        contentType: res.ContentType ?? 'application/octet-stream',
+        contentLength: res.ContentLength,
+      };
+    } catch (err) {
+      throw this.storageError(err, 'read', key, true);
+    }
+  }
+
+  /**
+   * Turn an S3 failure into an HTTP error with a useful message and log the real
+   * cause. `detailed` adds operator guidance (only for admin routes).
+   */
+  private storageError(
+    err: unknown,
+    action: 'upload' | 'read',
+    key: string,
+    detailed = false,
+  ) {
+    const name = (err as { name?: string }).name ?? 'UnknownError';
+    const message = (err as Error).message;
+    if (name === 'NoSuchKey' || name === 'NotFound') {
+      return new NotFoundException('This file is no longer in storage.');
+    }
+    if (CREDENTIAL_ERRORS.has(name)) {
+      this.logger.error(
+        `S3 ${action} of ${key} refused (${name}): ${message}. ` +
+          'Check the IAM user behind AWS_ACCESS_KEY_ID: the key may be disabled, deleted or quarantined.',
+      );
+      return new ServiceUnavailableException(
+        detailed
+          ? `File storage refused our AWS credentials (${name}). AWS may have disabled or quarantined the access key. ` +
+              'Create a new key in IAM, update AWS_ACCESS_KEY_ID and AWS_SECRET_ACCESS_KEY, then restart the API.'
+          : 'File storage is unavailable right now. Please try again later.',
+      );
+    }
+    this.logger.error(`S3 ${action} of ${key} failed (${name}): ${message}`);
+    return new InternalServerErrorException(
+      action === 'upload'
+        ? 'We could not save your file. Please try again.'
+        : 'Could not load the file from storage. Please try again.',
     );
   }
 
